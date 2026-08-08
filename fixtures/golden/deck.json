@@ -1,0 +1,108 @@
+{
+  "version": "openppt-1",
+  "title": "OpenPPT Golden Fixture",
+  "size": [960, 540],
+  "theme": {
+    "colors": {
+      "primary": "#2563EB",
+      "accent": "#F59E0B",
+      "text": "#111827",
+      "muted": "#6B7280",
+      "background": "#FFFFFF",
+      "surface": "#F8FAFC"
+    }
+  },
+  "pages": [
+    {
+      "id": "cover",
+      "background": { "type": "solid", "color": "$background" },
+      "elements": [
+        {
+          "id": "hero-bar",
+          "type": "shape",
+          "bounds": [0, 0, 960, 12],
+          "shape": "rect",
+          "fill": "$primary"
+        },
+        {
+          "id": "cover-title",
+          "type": "text",
+          "bounds": [60, 180, 700, 72],
+          "text": "OpenPPT Golden Fixture",
+          "fontSize": 36,
+          "bold": true,
+          "color": "$text",
+          "align": "left",
+          "valign": "middle"
+        },
+        {
+          "id": "cover-sub",
+          "type": "text",
+          "bounds": [60, 260, 700, 40],
+          "text": "Open IR → editable PPTX (no proprietary WASM)",
+          "fontSize": 18,
+          "color": "$muted",
+          "align": "left"
+        },
+        {
+          "id": "cover-mark",
+          "type": "image",
+          "bounds": [820, 420, 80, 80],
+          "src": "media/accent.png"
+        }
+      ]
+    },
+    {
+      "id": "body",
+      "background": { "type": "solid", "color": "$surface" },
+      "elements": [
+        {
+          "id": "body-title",
+          "type": "text",
+          "bounds": [48, 36, 864, 48],
+          "text": "Why an open intermediate representation",
+          "fontSize": 28,
+          "bold": true,
+          "color": "$primary"
+        },
+        {
+          "id": "card",
+          "type": "shape",
+          "bounds": [48, 120, 864, 320],
+          "shape": "roundRect",
+          "fill": "$background",
+          "lineColor": "$primary",
+          "lineWidth": 1.5
+        },
+        {
+          "id": "body-copy",
+          "type": "text",
+          "bounds": [72, 148, 816, 200],
+          "text": "Agents write declarative JSON/YAML with absolute bounds and theme tokens. OpenPPT validates the deck, then compiles it with pptxgenjs into a real PowerPoint file whose text remains editable.",
+          "fontSize": 18,
+          "color": "$text",
+          "align": "left",
+          "valign": "top"
+        },
+        {
+          "id": "body-badge",
+          "type": "shape",
+          "bounds": [72, 360, 160, 48],
+          "shape": "ellipse",
+          "fill": "$accent"
+        },
+        {
+          "id": "body-badge-text",
+          "type": "text",
+          "bounds": [72, 360, 160, 48],
+          "text": "v1.0",
+          "fontSize": 16,
+          "bold": true,
+          "color": "$text",
+          "align": "center",
+          "valign": "middle"
+        }
+      ]
+    }
+  ]
+}

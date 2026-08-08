@@ -1,0 +1,28 @@
+{
+  "version": "openppt-1",
+  "title": "Out Of Bounds Fixture",
+  "size": [960, 540],
+  "theme": {
+    "colors": {
+      "primary": "#2563EB",
+      "text": "#111827",
+      "background": "#FFFFFF"
+    }
+  },
+  "pages": [
+    {
+      "id": "only",
+      "background": { "type": "solid", "color": "$background" },
+      "elements": [
+        {
+          "id": "oob-text",
+          "type": "text",
+          "bounds": [900, 500, 200, 80],
+          "text": "This text sticks out of the canvas",
+          "fontSize": 18,
+          "color": "$text"
+        }
+      ]
+    }
+  ]
+}

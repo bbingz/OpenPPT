@@ -1,0 +1,26 @@
+{
+  "version": "openppt-1",
+  "title": "Missing Media Fixture",
+  "size": [960, 540],
+  "theme": {
+    "colors": {
+      "primary": "#2563EB",
+      "text": "#111827",
+      "background": "#FFFFFF"
+    }
+  },
+  "pages": [
+    {
+      "id": "only",
+      "background": { "type": "solid", "color": "$background" },
+      "elements": [
+        {
+          "id": "missing-img",
+          "type": "image",
+          "bounds": [100, 100, 200, 200],
+          "src": "media/does-not-exist.png"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,48 @@
+{
+  "name": "openppt",
+  "version": "1.0.0",
+  "description": "Open intermediate representation (IR) and open-source compiler for editable PowerPoint (.pptx). No proprietary Kimi/neo-ppt WASM runtime.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "bin": {
+    "openppt": "bin/openppt.js"
+  },
+  "exports": {
+    ".": "./src/index.js",
+    "./schema": "./schema/openppt-ir.schema.json"
+  },
+  "files": [
+    "bin/",
+    "src/",
+    "schema/",
+    "fixtures/golden/",
+    "themes/",
+    "README.md",
+    "LICENSE",
+    "NOTICE",
+    "docs/"
+  ],
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "export:golden": "node bin/openppt.js export fixtures/golden/deck.json -o fixtures/golden/out/deck.pptx --force",
+    "validate:golden": "node bin/openppt.js validate fixtures/golden/deck.json"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "pptx",
+    "powerpoint",
+    "presentation",
+    "ir",
+    "dsl",
+    "openppt",
+    "agent",
+    "slides"
+  ],
+  "dependencies": {
+    "ajv": "^8.17.1",
+    "pptxgenjs": "^3.12.0",
+    "yaml": "^2.7.0"
+  }
+}

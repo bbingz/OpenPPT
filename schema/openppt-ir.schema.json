@@ -1,0 +1,141 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openppt.dev/schema/openppt-ir-v1.schema.json",
+  "title": "OpenPPT Intermediate Representation v1",
+  "description": "Agent-friendly declarative deck IR. Absolute bounds in CSS pixels; theme color tokens use $name. Compiles to editable OOXML via open libraries (not proprietary WASM).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "size", "pages"],
+  "properties": {
+    "version": {
+      "type": "string",
+      "const": "openppt-1"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1
+    },
+    "size": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "items": { "type": "number", "exclusiveMinimum": 0 },
+      "description": "[width, height] in CSS pixels (1px ≈ 1pt for fontSize)."
+    },
+    "theme": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "colors": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "pattern": "^#([0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})$"
+          }
+        }
+      }
+    },
+    "pages": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/page" }
+    }
+  },
+  "$defs": {
+    "bounds": {
+      "type": "array",
+      "minItems": 4,
+      "maxItems": 4,
+      "items": { "type": "number" },
+      "description": "[x, y, width, height] in CSS pixels"
+    },
+    "color": {
+      "type": "string",
+      "description": "HEX #RRGGBB / #RRGGBBAA or theme token $name",
+      "pattern": "^(\\$[A-Za-z][A-Za-z0-9_-]*|#([0-9A-Fa-f]{6}|[0-9A-Fa-f]{8}))$"
+    },
+    "solidFill": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "color"],
+      "properties": {
+        "type": { "const": "solid" },
+        "color": { "$ref": "#/$defs/color" }
+      }
+    },
+    "page": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "elements"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "background": { "$ref": "#/$defs/solidFill" },
+        "elements": {
+          "type": "array",
+          "items": {
+            "oneOf": [
+              { "$ref": "#/$defs/textElement" },
+              { "$ref": "#/$defs/shapeElement" },
+              { "$ref": "#/$defs/imageElement" }
+            ]
+          }
+        }
+      }
+    },
+    "textElement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type", "bounds", "text"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "type": { "const": "text" },
+        "bounds": { "$ref": "#/$defs/bounds" },
+        "text": { "type": "string" },
+        "fontSize": { "type": "number", "exclusiveMinimum": 0 },
+        "fontFamily": { "type": "string" },
+        "color": { "$ref": "#/$defs/color" },
+        "bold": { "type": "boolean" },
+        "align": {
+          "type": "string",
+          "enum": ["left", "center", "right"]
+        },
+        "valign": {
+          "type": "string",
+          "enum": ["top", "middle", "bottom"]
+        }
+      }
+    },
+    "shapeElement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type", "bounds", "shape"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "type": { "const": "shape" },
+        "bounds": { "$ref": "#/$defs/bounds" },
+        "shape": {
+          "type": "string",
+          "enum": ["rect", "roundRect", "ellipse"]
+        },
+        "fill": { "$ref": "#/$defs/color" },
+        "lineColor": { "$ref": "#/$defs/color" },
+        "lineWidth": { "type": "number", "minimum": 0 }
+      }
+    },
+    "imageElement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type", "bounds", "src"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "type": { "const": "image" },
+        "bounds": { "$ref": "#/$defs/bounds" },
+        "src": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Project-relative path to a local image file (no remote URLs in v1.0 default path)."
+        }
+      }
+    }
+  }
+}

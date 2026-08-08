@@ -1,0 +1,12 @@
+{
+  "id": "default",
+  "name": "OpenPPT Default",
+  "colors": {
+    "primary": "#2563EB",
+    "accent": "#F59E0B",
+    "text": "#111827",
+    "muted": "#6B7280",
+    "background": "#FFFFFF",
+    "surface": "#F8FAFC"
+  }
+}

@@ -1,0 +1,40 @@
+# Dependencies
+node_modules/
+package-lock.json.bak
+*.log
+.npm/
+
+# Build / output
+dist/
+out/
+*.pptx
+!fixtures/**/*.pptx
+coverage/
+.DS_Store
+
+# Proprietary / large reference material (not product runtime)
+upstream/
+open-kimi-ppt-skill.git/
+Binaryify-open-kimi-ppt-skill.git/
+backups/
+*.tgz
+
+# Editor / OS
+.idea/
+.vscode/
+*.swp
+*~
+
+# Env
+.env
+.env.*
+
+# Scratch / local
+.tmp/
+.cache/
+.qa-images/
+
+# Keep discovery docs; ignore any accidental large dumps
+docs/discovery/*.zip
+.grok/
+fixtures/**/out/

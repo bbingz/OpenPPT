@@ -1,0 +1,19 @@
+OpenPPT
+Copyright 2026 OpenPPT contributors
+
+This product includes software developed for an open intermediate
+presentation representation (IR) and an open-source PPTX compiler.
+
+Third-party dependencies (installed via npm; see package.json):
+  - pptxgenjs — MIT License — https://github.com/gitbrent/PptxGenJS
+  - ajv — MIT License — https://github.com/ajv-validator/ajv
+  - yaml — ISC License — https://github.com/eemeli/yaml
+
+This project does NOT include, require, or redistribute:
+  - Moonshot AI / Kimi neo-ppt frontend mirrors
+  - Patched official PPTD→PPTX WASM binaries
+  - Proprietary design-system prose reverse-engineered from Kimi Slides
+
+Reference material under upstream/, backups/, and *.git mirrors (if present
+in a developer checkout) is for research only and is gitignored from the
+product tree; it is not part of the default OpenPPT export runtime.
