@@ -1,7 +1,7 @@
 {
   "name": "openppt",
-  "version": "1.0.0",
-  "description": "Open intermediate representation (IR) and open-source compiler for editable PowerPoint (.pptx). No proprietary Kimi/neo-ppt WASM runtime.",
+  "version": "1.0.1",
+  "description": "Open intermediate representation (IR) and open-source compiler for editable PowerPoint (.pptx). No proprietary Kimi/neo-ppt WASM runtime. Runtime: Bun.",
   "license": "Apache-2.0",
   "type": "module",
   "bin": {
@@ -15,20 +15,22 @@
     "bin/",
     "src/",
     "schema/",
-    "fixtures/golden/",
+    "fixtures/golden/deck.json",
+    "fixtures/golden/media/accent.png",
     "themes/",
     "README.md",
     "LICENSE",
     "NOTICE",
-    "docs/"
+    "docs/IR.md",
+    "docs/BACKLOG.md"
   ],
   "scripts": {
-    "test": "node --test test/*.test.js",
-    "export:golden": "node bin/openppt.js export fixtures/golden/deck.json -o fixtures/golden/out/deck.pptx --force",
-    "validate:golden": "node bin/openppt.js validate fixtures/golden/deck.json"
+    "test": "bun test ./test/",
+    "export:golden": "bun bin/openppt.js export fixtures/golden/deck.json -o fixtures/golden/out/deck.pptx --force",
+    "validate:golden": "bun bin/openppt.js validate fixtures/golden/deck.json"
   },
   "engines": {
-    "node": ">=18"
+    "bun": ">=1.1.0"
   },
   "keywords": [
     "pptx",
@@ -38,7 +40,8 @@
     "dsl",
     "openppt",
     "agent",
-    "slides"
+    "slides",
+    "bun"
   ],
   "dependencies": {
     "ajv": "^8.17.1",

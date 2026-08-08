@@ -23,9 +23,10 @@ export { OpenPptError, ErrorCodes } from "./errors.js";
 export async function exportDeckFile(deckPath, outputPath, options = {}) {
   const { loadDeck } = await import("./load.js");
   const { compileToPptx } = await import("./compile.js");
-  const { deck, projectRoot } = loadDeck(deckPath);
+  const { deck, projectRoot, sourcePath } = loadDeck(deckPath);
   return compileToPptx(deck, outputPath, {
     projectRoot,
     force: Boolean(options.force),
+    sourcePath,
   });
 }

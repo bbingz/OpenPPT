@@ -19,8 +19,12 @@
       "type": "array",
       "minItems": 2,
       "maxItems": 2,
-      "items": { "type": "number", "exclusiveMinimum": 0 },
-      "description": "[width, height] in CSS pixels (1px ≈ 1pt for fontSize)."
+      "items": {
+        "type": "number",
+        "exclusiveMinimum": 0,
+        "maximum": 5376
+      },
+      "description": "[width, height] in CSS pixels at 96dpi (max 5376 ≈ 56in PowerPoint limit). fontSize is points, not pixels — see docs/IR.md."
     },
     "theme": {
       "type": "object",

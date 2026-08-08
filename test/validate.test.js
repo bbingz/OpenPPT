@@ -1,9 +1,18 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadDeck } from "../src/load.js";
-import { validateDeck, getSchemaValidator } from "../src/validate.js";
+import { validateDeck, getSchemaValidator, safeProjectPath } from "../src/validate.js";
 import { OpenPptError, ErrorCodes } from "../src/errors.js";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -50,6 +59,172 @@ describe("validateDeck (shipped)", () => {
       (err) => {
         assert.ok(err instanceof OpenPptError);
         assert.equal(err.code, ErrorCodes.SCHEMA);
+        return true;
+      },
+    );
+  });
+
+  it("fails closed on non-finite bounds from YAML (.nan / .inf)", () => {
+    const { deck, projectRoot } = loadDeck(
+      join(root, "fixtures/negative-nonfinite/deck.yaml"),
+    );
+    assert.throws(
+      () => validateDeck(deck, { projectRoot, checkMedia: true }),
+      (err) => {
+        assert.ok(err instanceof OpenPptError);
+        assert.equal(err.code, ErrorCodes.BOUNDS);
+        return true;
+      },
+    );
+  });
+
+  it("fails closed on non-finite font and line sizes", () => {
+    const elements = [
+      {
+        id: "text",
+        type: "text",
+        bounds: [0, 0, 100, 40],
+        text: "x",
+        fontSize: Infinity,
+      },
+      {
+        id: "shape",
+        type: "shape",
+        bounds: [0, 0, 100, 40],
+        shape: "rect",
+        lineWidth: Infinity,
+      },
+    ];
+
+    for (const element of elements) {
+      assert.throws(
+        () =>
+          validateDeck(
+            {
+              version: "openppt-1",
+              size: [960, 540],
+              pages: [{ id: "p1", elements: [element] }],
+            },
+            { checkMedia: false },
+          ),
+        (err) => {
+          assert.ok(err instanceof OpenPptError);
+          assert.equal(err.code, ErrorCodes.SCHEMA);
+          return true;
+        },
+      );
+    }
+  });
+
+  it("fails closed on an unresolved theme token", () => {
+    assert.throws(
+      () =>
+        validateDeck(
+          {
+            version: "openppt-1",
+            size: [960, 540],
+            pages: [
+              {
+                id: "p1",
+                elements: [
+                  {
+                    id: "t1",
+                    type: "text",
+                    bounds: [0, 0, 100, 40],
+                    text: "x",
+                    color: "$nope",
+                  },
+                ],
+              },
+            ],
+          },
+          { checkMedia: false },
+        ),
+      (err) => {
+        assert.ok(err instanceof OpenPptError);
+        assert.equal(err.code, ErrorCodes.THEME_COLOR);
+        return true;
+      },
+    );
+  });
+
+  it("path jail accepts an in-root media path", () => {
+    const abs = safeProjectPath(join(root, "fixtures/golden"), "media/accent.png");
+    assert.ok(existsSync(abs));
+  });
+
+  it("path jail rejects a symlink pointing outside the project root", () => {
+    const dir = mkdtempSync(join(tmpdir(), "openppt-jail-"));
+    try {
+      const outside = join(dir, "outside.png");
+      const projectRoot = join(dir, "proj");
+      mkdirSync(join(projectRoot, "media"), { recursive: true });
+      writeFileSync(outside, "stand-in for a file outside the deck project");
+      symlinkSync(outside, join(projectRoot, "media/leak.png"));
+      assert.throws(
+        () => safeProjectPath(projectRoot, "media/leak.png"),
+        (err) => {
+          assert.ok(err instanceof OpenPptError);
+          assert.equal(err.code, ErrorCodes.MEDIA_MISSING);
+          return true;
+        },
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("fails closed on a duplicate page id", () => {
+    assert.throws(
+      () =>
+        validateDeck(
+          {
+            version: "openppt-1",
+            size: [960, 540],
+            pages: [
+              { id: "dup", elements: [] },
+              { id: "dup", elements: [] },
+            ],
+          },
+          { checkMedia: false },
+        ),
+      (err) => {
+        assert.ok(err instanceof OpenPptError);
+        assert.equal(err.code, ErrorCodes.SCHEMA);
+        assert.match(err.message, /Duplicate page id/);
+        return true;
+      },
+    );
+  });
+
+  it("element ids must be unique deck-wide, not just per page", () => {
+    assert.throws(
+      () =>
+        validateDeck(
+          {
+            version: "openppt-1",
+            size: [960, 540],
+            pages: [
+              {
+                id: "p1",
+                elements: [
+                  { id: "title", type: "text", bounds: [0, 0, 100, 40], text: "a" },
+                ],
+              },
+              {
+                id: "p2",
+                elements: [
+                  { id: "title", type: "text", bounds: [0, 0, 100, 40], text: "b" },
+                ],
+              },
+            ],
+          },
+          { checkMedia: false },
+        ),
+      (err) => {
+        assert.ok(err instanceof OpenPptError);
+        assert.equal(err.code, ErrorCodes.SCHEMA);
+        assert.match(err.message, /Duplicate element id/);
         return true;
       },
     );

@@ -1,5 +1,12 @@
-import { mkdirSync, writeFileSync, existsSync, unlinkSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import {
+  mkdirSync,
+  existsSync,
+  unlinkSync,
+  renameSync,
+  realpathSync,
+} from "node:fs";
+import { dirname, resolve, join } from "node:path";
+import { randomBytes } from "node:crypto";
 import PptxGenJS from "pptxgenjs";
 import { validateDeck, resolveColor, safeProjectPath } from "./validate.js";
 import { OpenPptError, ErrorCodes } from "./errors.js";
@@ -17,6 +24,8 @@ function pxToIn(px) {
 
 /**
  * Strip alpha from #RRGGBBAA for pptxgenjs solid colors (expects 6 hex or name).
+ * v1.0: alpha is intentionally dropped; schema still accepts 8-digit hex for
+ * forward compatibility. See docs/IR.md.
  * @param {string} hex
  * @returns {string}
  */
@@ -29,7 +38,7 @@ function toPptxColor(hex) {
 /**
  * Map shape name to pptxgenjs shape.
  * @param {string} shape
- * @param {typeof PptxGenJS} pptx
+ * @param {import("pptxgenjs").default} pptx
  */
 function mapShape(shape, pptx) {
   const s = pptx.ShapeType || {};
@@ -45,28 +54,12 @@ function mapShape(shape, pptx) {
 }
 
 /**
- * Compile a validated deck object to a PPTX file using pptxgenjs (open source).
+ * Shared slide renderer used by file and buffer export paths.
  * @param {object} deck
- * @param {string} outputPath
- * @param {{ projectRoot: string, force?: boolean }} options
- * @returns {Promise<{ outputPath: string, pageCount: number }>}
+ * @param {Record<string, string>} colors
+ * @param {string} projectRoot
  */
-export async function compileToPptx(deck, outputPath, options) {
-  const { projectRoot, force = false } = options;
-  const { colors } = validateDeck(deck, { projectRoot, checkMedia: true });
-
-  const out = resolve(outputPath);
-  if (existsSync(out) && !force) {
-    throw new OpenPptError(
-      ErrorCodes.EXPORT,
-      `Output already exists (pass force=true to overwrite): ${out}`,
-    );
-  }
-  mkdirSync(dirname(out), { recursive: true });
-  if (existsSync(out) && force) {
-    unlinkSync(out);
-  }
-
+function buildPresentation(deck, colors, projectRoot) {
   const [canvasW, canvasH] = deck.size;
   const pptx = new PptxGenJS();
   pptx.defineLayout({
@@ -75,9 +68,9 @@ export async function compileToPptx(deck, outputPath, options) {
     height: pxToIn(canvasH),
   });
   pptx.layout = "OPENPPT";
+  pptx.author = "OpenPPT";
   if (deck.title) {
     pptx.title = deck.title;
-    pptx.author = "OpenPPT";
   }
 
   for (const page of deck.pages) {
@@ -100,6 +93,7 @@ export async function compileToPptx(deck, outputPath, options) {
         const color = el.color
           ? toPptxColor(resolveColor(el.color, colors, el.id)).replace("#", "")
           : "111827";
+        // fontSize is IR points (pptxgenjs unit), not CSS px — see docs/IR.md
         slide.addText(el.text, {
           ...box,
           fontSize: el.fontSize ?? 18,
@@ -134,9 +128,78 @@ export async function compileToPptx(deck, outputPath, options) {
     }
   }
 
+  return pptx;
+}
+
+/**
+ * Resolve path for equality checks (realpath when possible).
+ * @param {string} p
+ */
+function realOrResolve(p) {
+  const abs = resolve(p);
   try {
-    await pptx.writeFile({ fileName: out });
+    return realpathSync(abs);
+  } catch {
+    return abs;
+  }
+}
+
+/**
+ * Compile a validated deck object to a PPTX file using pptxgenjs (open source).
+ * Writes to a sibling temp file then renames — never unlinks the destination
+ * before a successful write, and refuses to overwrite the source deck path.
+ * @param {object} deck
+ * @param {string} outputPath
+ * @param {{ projectRoot: string, force?: boolean, sourcePath?: string }} options
+ * @returns {Promise<{ outputPath: string, pageCount: number }>}
+ */
+export async function compileToPptx(deck, outputPath, options) {
+  const { projectRoot, force = false, sourcePath } = options;
+  const { colors } = validateDeck(deck, { projectRoot, checkMedia: true });
+
+  const out = resolve(outputPath);
+  const outKey = realOrResolve(out);
+
+  if (sourcePath) {
+    const srcKey = realOrResolve(sourcePath);
+    if (srcKey === outKey) {
+      throw new OpenPptError(
+        ErrorCodes.EXPORT,
+        `Refusing to overwrite source deck path: ${out}`,
+        { sourcePath, outputPath: out },
+      );
+    }
+  }
+
+  if (existsSync(out) && !force) {
+    throw new OpenPptError(
+      ErrorCodes.EXPORT,
+      `Output already exists (pass force=true to overwrite): ${out}`,
+    );
+  }
+
+  mkdirSync(dirname(out), { recursive: true });
+  const pptx = buildPresentation(deck, colors, projectRoot);
+  // pptxgenjs appends ".pptx" when the path does not already end with it.
+  const tmp = join(
+    dirname(out),
+    `.openppt-export-${randomBytes(8).toString("hex")}.tmp.pptx`,
+  );
+
+  try {
+    await pptx.writeFile({ fileName: tmp });
+    if (!existsSync(tmp)) {
+      throw new OpenPptError(ErrorCodes.EXPORT, `Export produced no temp file at ${tmp}`);
+    }
+    // Atomic replace of destination only after successful write.
+    renameSync(tmp, out);
   } catch (err) {
+    try {
+      if (existsSync(tmp)) unlinkSync(tmp);
+    } catch {
+      // ignore cleanup failures
+    }
+    if (err instanceof OpenPptError) throw err;
     throw new OpenPptError(
       ErrorCodes.EXPORT,
       `pptxgenjs write failed: ${err instanceof Error ? err.message : String(err)}`,
@@ -151,7 +214,7 @@ export async function compileToPptx(deck, outputPath, options) {
 }
 
 /**
- * Load path is handled by callers; this writes bytes for advanced use.
+ * Compile to in-memory PPTX bytes (ZIP).
  * @param {object} deck
  * @param {{ projectRoot: string }} options
  * @returns {Promise<Buffer>}
@@ -159,57 +222,7 @@ export async function compileToPptx(deck, outputPath, options) {
 export async function compileToBuffer(deck, options) {
   const { projectRoot } = options;
   const { colors } = validateDeck(deck, { projectRoot, checkMedia: true });
-  const [canvasW, canvasH] = deck.size;
-  const pptx = new PptxGenJS();
-  pptx.defineLayout({
-    name: "OPENPPT",
-    width: pxToIn(canvasW),
-    height: pxToIn(canvasH),
-  });
-  pptx.layout = "OPENPPT";
-  if (deck.title) pptx.title = deck.title;
-
-  for (const page of deck.pages) {
-    const slide = pptx.addSlide();
-    if (page.background?.color) {
-      const bg = toPptxColor(resolveColor(page.background.color, colors, "background"));
-      slide.background = { color: bg.replace("#", "") };
-    }
-    for (const el of page.elements) {
-      const [x, y, w, h] = el.bounds;
-      const box = { x: pxToIn(x), y: pxToIn(y), w: pxToIn(w), h: pxToIn(h) };
-      if (el.type === "text") {
-        const color = el.color
-          ? toPptxColor(resolveColor(el.color, colors, el.id)).replace("#", "")
-          : "111827";
-        slide.addText(el.text, {
-          ...box,
-          fontSize: el.fontSize ?? 18,
-          fontFace: el.fontFamily || "Arial",
-          color,
-          bold: Boolean(el.bold),
-          align: el.align || "left",
-          valign: el.valign || "top",
-        });
-      } else if (el.type === "shape") {
-        const fill = el.fill
-          ? toPptxColor(resolveColor(el.fill, colors, el.id)).replace("#", "")
-          : "2563EB";
-        slide.addShape(mapShape(el.shape, pptx), {
-          ...box,
-          fill: { color: fill },
-          line: { color: fill, width: el.lineWidth ?? 0 },
-        });
-      } else if (el.type === "image") {
-        const abs = safeProjectPath(projectRoot, el.src);
-        slide.addImage({ path: abs, ...box });
-      }
-    }
-  }
-
+  const pptx = buildPresentation(deck, colors, projectRoot);
   const data = await pptx.write({ outputType: "nodebuffer" });
   return Buffer.isBuffer(data) ? data : Buffer.from(data);
 }
-
-/** Re-export for tests that write intermediate files. */
-export { writeFileSync };

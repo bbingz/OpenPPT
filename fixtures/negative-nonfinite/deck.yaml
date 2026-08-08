@@ -1,0 +1,15 @@
+version: openppt-1
+title: Non-Finite Bounds Fixture
+size: [960, 540]
+theme:
+  colors:
+    text: "#111827"
+pages:
+  - id: only
+    elements:
+      # YAML .nan / .inf satisfy JSON Schema `type: number` but must fail closed.
+      - id: nan-text
+        type: text
+        bounds: [.nan, .nan, .inf, 50]
+        text: "Non-finite bounds must never reach the exporter"
+        color: "$text"

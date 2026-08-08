@@ -1,23 +1,65 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
-import { existsSync, statSync, mkdirSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
+import {
+  existsSync,
+  statSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const cli = join(root, "bin/openppt.js");
-const node = process.execPath;
+const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
+/** Prefer Bun for all CLI invocations (project standard). */
+const bunBin = process.env.BUN_BIN || "bun";
 
 describe("openppt CLI (shipped entry)", () => {
   it("prints version", () => {
-    const out = execFileSync(node, [cli, "--version"], { encoding: "utf8" }).trim();
-    assert.equal(out, "1.0.0");
+    const out = execFileSync(bunBin, [cli, "--version"], { encoding: "utf8" }).trim();
+    assert.equal(out, pkg.version);
+  });
+
+  it("runs directly through the shipped Bun shebang", () => {
+    const out = execFileSync(cli, ["--version"], { encoding: "utf8" }).trim();
+    assert.equal(out, pkg.version);
+  });
+
+  it("runs main() when invoked through a symlink (npm/bun link installs a symlinked bin)", () => {
+    const dir = mkdtempSync(join(tmpdir(), "openppt-bin-"));
+    try {
+      const link = join(dir, "openppt.js");
+      symlinkSync(cli, link);
+      const out = execFileSync(bunBin, [link, "--version"], { encoding: "utf8" }).trim();
+      assert.equal(out, pkg.version);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects unknown options and a missing output value", () => {
+    const unknown = spawnSync(bunBin, [cli, "validate", "--bogus"], {
+      encoding: "utf8",
+    });
+    assert.equal(unknown.status, 2);
+    assert.match(unknown.stderr, /Unknown option: --bogus/);
+
+    const missingOutput = spawnSync(bunBin, [cli, "export", "deck.json", "-o", "--force"], {
+      encoding: "utf8",
+    });
+    assert.equal(missingOutput.status, 2);
+    assert.match(missingOutput.stderr, /-o requires a path argument/);
   });
 
   it("validates golden fixture", () => {
     const out = execFileSync(
-      node,
+      bunBin,
       [cli, "validate", join(root, "fixtures/golden/deck.json")],
       { encoding: "utf8" },
     );
@@ -30,7 +72,7 @@ describe("openppt CLI (shipped entry)", () => {
     let errOut = "";
     try {
       execFileSync(
-        node,
+        bunBin,
         [cli, "validate", join(root, "fixtures/negative-missing-media/deck.json")],
         { encoding: "utf8" },
       );
@@ -47,7 +89,7 @@ describe("openppt CLI (shipped entry)", () => {
     mkdirSync(outDir, { recursive: true });
     const out = join(outDir, "cli-deck.pptx");
     const log = execFileSync(
-      node,
+      bunBin,
       [cli, "export", join(root, "fixtures/golden/deck.json"), "-o", out, "--force"],
       { encoding: "utf8" },
     );

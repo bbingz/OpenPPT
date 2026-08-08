@@ -1,0 +1,6 @@
+# OpenPPT primary runtime is Bun.
+# Prefer `bun test ./test/` so path filters are rooted at the product suite
+# (plain `test/` is a substring filter and can match gitignored upstream/test).
+
+[test]
+# Keep defaults; package.json script scopes with ./test/

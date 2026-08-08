@@ -5,7 +5,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
 import { loadDeck } from "../src/load.js";
-import { compileToPptx } from "../src/compile.js";
+import { compileToPptx, compileToBuffer } from "../src/compile.js";
 import { exportDeckFile } from "../src/index.js";
 import { OpenPptError, ErrorCodes } from "../src/errors.js";
 
@@ -55,6 +55,13 @@ describe("compileToPptx (shipped)", () => {
     assert.ok(statSync(result.outputPath).size > 0);
   });
 
+  it("compileToBuffer returns PPTX (ZIP) bytes without writing to disk", async () => {
+    const { deck, projectRoot } = loadDeck(join(root, "fixtures/golden/deck.json"));
+    const buf = await compileToBuffer(deck, { projectRoot });
+    assert.ok(buf.length > 1000);
+    assert.equal(buf.subarray(0, 2).toString("latin1"), "PK"); // ZIP magic
+  });
+
   it("fails closed when media is missing (compile path)", async () => {
     const { deck, projectRoot } = loadDeck(
       join(root, "fixtures/negative-missing-media/deck.json"),
@@ -87,5 +94,26 @@ describe("compileToPptx (shipped)", () => {
         return true;
       },
     );
+  });
+
+  it("refuses to overwrite the source deck path with --force", async () => {
+    const deckPath = join(root, "fixtures/golden/deck.json");
+    const { deck, projectRoot, sourcePath } = loadDeck(deckPath);
+    await assert.rejects(
+      () =>
+        compileToPptx(deck, sourcePath, {
+          projectRoot,
+          force: true,
+          sourcePath,
+        }),
+      (err) => {
+        assert.ok(err instanceof OpenPptError);
+        assert.equal(err.code, ErrorCodes.EXPORT);
+        assert.match(err.message, /Refusing to overwrite source deck/);
+        return true;
+      },
+    );
+    // source still present
+    assert.ok(existsSync(deckPath));
   });
 });

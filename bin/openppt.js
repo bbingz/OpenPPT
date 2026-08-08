@@ -1,28 +1,29 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 
 /**
  * OpenPPT CLI — validate IR and export editable PPTX (open stack only).
+ * Runtime: Bun (preferred). Node may work but is not the supported path.
  *
  * Usage:
- *   openppt validate <deck.json|yaml>
- *   openppt export <deck.json|yaml> -o <out.pptx> [--force]
+ *   bun bin/openppt.js validate <deck.json|yaml>
+ *   bun bin/openppt.js export <deck.json|yaml> -o <out.pptx> [--force]
  *   openppt --version | --help
  */
 
-import { existsSync } from "node:fs";
 import { resolve } from "node:path";
-import { pathToFileURL } from "node:url";
-import { createRequire } from "node:module";
+import { fileURLToPath } from "node:url";
+import { readFileSync, realpathSync } from "node:fs";
 
-const require = createRequire(import.meta.url);
-const pkg = require("../package.json");
+const pkg = JSON.parse(
+  readFileSync(new URL("../package.json", import.meta.url), "utf8"),
+);
 
 function printHelp() {
   console.log(`OpenPPT v${pkg.version} — open IR → editable PPTX
 
 Usage:
-  openppt validate <deck.json|deck.yaml>
-  openppt export <deck.json|deck.yaml> -o <out.pptx> [--force]
+  bun bin/openppt.js validate <deck.json|deck.yaml>
+  bun bin/openppt.js export <deck.json|deck.yaml> -o <out.pptx> [--force]
   openppt -h | --help
   openppt -V | --version
 
@@ -30,6 +31,7 @@ Notes:
   - IR schema: schema/openppt-ir.schema.json
   - Export uses pptxgenjs only (no Kimi/neo-ppt WASM)
   - Missing local media and out-of-bounds elements fail closed
+  - Runtime: Bun
 `);
 }
 
@@ -46,18 +48,38 @@ function parseArgs(argv) {
 
   while (args.length) {
     const a = args.shift();
-    if (a === "-h" || a === "--help") opts.help = true;
-    else if (a === "-V" || a === "--version") opts.version = true;
-    else if (a === "--force") opts.force = true;
-    else if (a === "-o" || a === "--output") {
-      opts.output = args.shift() || null;
-    } else if (!opts.command && (a === "validate" || a === "export")) {
-      opts.command = a;
-    } else if (!opts.deck) {
-      opts.deck = a;
-    } else {
-      throw new Error(`Unexpected argument: ${a}`);
+    if (a === "-h" || a === "--help") {
+      opts.help = true;
+      continue;
     }
+    if (a === "-V" || a === "--version") {
+      opts.version = true;
+      continue;
+    }
+    if (a === "--force") {
+      opts.force = true;
+      continue;
+    }
+    if (a === "-o" || a === "--output") {
+      const value = args.shift();
+      if (!value || value.startsWith("-")) {
+        throw new Error(`${a} requires a path argument (got ${value ?? "nothing"})`);
+      }
+      opts.output = value;
+      continue;
+    }
+    if (a.startsWith("-")) {
+      throw new Error(`Unknown option: ${a}`);
+    }
+    if (!opts.command && (a === "validate" || a === "export")) {
+      opts.command = a;
+      continue;
+    }
+    if (!opts.deck) {
+      opts.deck = a;
+      continue;
+    }
+    throw new Error(`Unexpected argument: ${a}`);
   }
   return opts;
 }
@@ -95,6 +117,10 @@ async function main() {
     const { deck, projectRoot, sourcePath } = loadDeck(opts.deck);
 
     if (opts.command === "validate") {
+      if (opts.output) {
+        console.error("validate does not accept -o/--output");
+        process.exit(2);
+      }
       validateDeck(deck, { projectRoot, checkMedia: true });
       console.log(`OK  ${sourcePath}`);
       console.log(`    pages=${deck.pages.length} size=${JSON.stringify(deck.size)}`);
@@ -109,6 +135,7 @@ async function main() {
       const result = await compileToPptx(deck, opts.output, {
         projectRoot,
         force: opts.force,
+        sourcePath,
       });
       console.log(`Wrote ${result.outputPath}`);
       console.log(`pages=${result.pageCount}`);
@@ -124,11 +151,25 @@ async function main() {
   }
 }
 
-// Allow importing without running when tested
-const isMain =
-  process.argv[1] &&
-  import.meta.url === pathToFileURL(resolve(process.argv[1])).href;
+/**
+ * True when this file is the process entry point. Compares *real* paths: an
+ * installed `bin` is a symlink (npm/bun link) and a repo can sit under a
+ * symlinked parent, in both of which cases argv[1] and import.meta.url spell
+ * the same file differently and a naive comparison silently skips main().
+ * @returns {boolean}
+ */
+function isEntrypoint() {
+  if (!process.argv[1]) return false;
+  try {
+    return (
+      realpathSync(resolve(process.argv[1])) ===
+      realpathSync(fileURLToPath(import.meta.url))
+    );
+  } catch {
+    return false;
+  }
+}
 
-if (isMain || process.argv[1]?.endsWith("openppt.js")) {
+if (isEntrypoint()) {
   main();
 }

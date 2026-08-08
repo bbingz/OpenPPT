@@ -6,27 +6,27 @@ OpenPPT fills the open-source gap left by proprietary “YAML deck + closed WASM
 
 | | |
 |---|---|
-| **Version** | **1.0.0** |
+| **Version** | **1.0.1** |
 | **License** | Apache-2.0 (see `LICENSE` + `NOTICE`) |
-| **Runtime** | Node.js 18+ |
+| **Runtime** | **Bun** ≥ 1.1 (preferred; scripts and shebang use Bun) |
 | **Default exporter** | [pptxgenjs](https://github.com/gitbrent/PptxGenJS) (MIT) |
 
 ## Install (local)
 
 ```bash
 cd /path/to/OpenPPT
-npm install
+bun install
 ```
 
 ```bash
 # validate IR
-node bin/openppt.js validate fixtures/golden/deck.json
+bun bin/openppt.js validate fixtures/golden/deck.json
 
 # export editable PPTX
-node bin/openppt.js export fixtures/golden/deck.json -o out/deck.pptx --force
+bun bin/openppt.js export fixtures/golden/deck.json -o out/deck.pptx --force
 ```
 
-After `npm link` / global install, the binary name is `openppt`.
+After linking, the binary name is `openppt` (shebang: `#!/usr/bin/env bun`).
 
 ## Open IR (v1)
 
@@ -36,7 +36,10 @@ After `npm link` / global install, the binary name is `openppt`.
 - **Theme tokens:** `"$primary"` style references under `theme.colors`
 - **Elements (v1.0):** `text` · `shape` (`rect` | `roundRect` | `ellipse`) · `image` (local path only)
 - **Bounds:** absolute `[x, y, width, height]` — must fit inside the canvas
-- **Media:** project-relative paths only; absolute paths and `..` escapes are rejected
+- **IDs:** page ids and element ids must each be unique **across the whole deck**
+  (element ids are not scoped per page — don't reuse `title` on every slide)
+- **Media:** project-relative paths only; absolute paths, `..` escapes, and
+  symlinks leaving the project root are rejected
 
 Golden fixture: [`fixtures/golden/deck.json`](fixtures/golden/deck.json) (2 pages: cover + body, text/shape/image).
 
@@ -97,16 +100,22 @@ Default export **refuses** to write a PPTX when:
 | Element outside canvas | `BOUNDS_OUT_OF_RANGE` |
 | Missing local image | `MEDIA_MISSING` |
 | Unresolved `$token` | `THEME_COLOR_UNRESOLVED` |
+| Duplicate page `id` | `SCHEMA_INVALID` |
+| Duplicate element `id` (deck-wide) | `SCHEMA_INVALID` |
+
+The last two are enforced by `validateDeck`, not by the JSON Schema — schema
+alone cannot express cross-document uniqueness.
 
 ## Agent usage (thin skill)
 
-1. Read `schema/openppt-ir.schema.json` and `themes/default.json`.
+1. Read `schema/openppt-ir.schema.json`. Optionally copy colors from `themes/default.json` into your deck's `theme.colors` (it is a **template only** — not auto-loaded at runtime).
 2. Write a self-contained project: `deck.json` + `media/*` next to it.
-3. Run `node bin/openppt.js validate <deck.json>` and fix errors.
-4. Run `node bin/openppt.js export <deck.json> -o <deck.pptx> --force`.
+3. Run `bun bin/openppt.js validate <deck.json>` and fix errors.
+4. Run `bun bin/openppt.js export <deck.json> -o <deck.pptx> --force`.
 5. Deliver both the IR project folder and the `.pptx`.
 
 Do **not** call any Kimi WASM, neo-ppt mirror, or `www.kimi.com` export path.
+Use **Bun**, not Node, for install/test/export in this project.
 
 ## What v1.0 is / is not
 
@@ -136,8 +145,11 @@ See [`docs/BACKLOG.md`](docs/BACKLOG.md).
 ## Tests
 
 ```bash
-npm test
+bun test ./test/
 ```
+
+The `./` prefix matters: `bun test` positional args are path filters, so a bare
+`test/` (or no argument) also collects any gitignored `upstream/test/**`.
 
 ## License
 
