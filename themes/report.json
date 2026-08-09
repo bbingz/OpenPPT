@@ -1,0 +1,15 @@
+{
+  "id": "report",
+  "name": "OpenPPT Report",
+  "colors": {
+    "primary": "#0F766E",
+    "accent": "#134E4A",
+    "text": "#134E4A",
+    "muted": "#64748B",
+    "background": "#F8FAFC",
+    "surface": "#FFFFFF",
+    "soft": "#CCFBF1",
+    "line": "#CBD5E1",
+    "white": "#FFFFFF"
+  }
+}

@@ -67,6 +67,7 @@ Agents may nest `type: "group"` instead of hand-computing every `[x,y,w,h]`.
 | `stack` | vertical | each child needs `height` **or** `flex`; optional `width` + `align` |
 | `row` | horizontal | each child needs `width` **or** `flex`; optional `height` + `align` |
 | `grid` | 2D cells | `columns` (default 2); equal cell size; `gap` applies both axes |
+| `layer` | z-order | **every child fills the group** (later children paint on top); ideal for card = shape bg + nested stack |
 
 - `padding`: number, `[v,h]`, or `[t,r,b,l]`
 - `align`: `start` \| `center` \| `end` \| `stretch` (cross axis)

@@ -1,0 +1,15 @@
+{
+  "id": "magazine",
+  "name": "OpenPPT Magazine",
+  "colors": {
+    "primary": "#C73E3A",
+    "accent": "#1A1A1A",
+    "text": "#1A1A1A",
+    "muted": "#6B7280",
+    "background": "#FFFFFF",
+    "surface": "#F5F5F4",
+    "soft": "#FEF2F2",
+    "line": "#E5E7EB",
+    "white": "#FFFFFF"
+  }
+}

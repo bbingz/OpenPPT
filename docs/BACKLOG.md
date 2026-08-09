@@ -21,8 +21,9 @@ v1.0 ships the **core open IR → open PPTX compiler** gap. Remaining items from
 - [x] Structured layout QA (`openppt qa`) — overlap / density / empty page
 - [x] Offline HTML preview (`openppt preview`)
 - [x] Additional theme pack (`themes/dark.json`)
-- [x] Layout primitives (`group` stack/row/grid) — v1.4
+- [x] Layout primitives (`group` stack/row/grid/layer) — v1.4 / v1.4.1
 - [x] QA `--fail-on` severity gate — v1.4
+- [x] Extra themes (magazine, report) + sspai group dogfood — v1.4.1
 - [ ] Import charts/tables from PPTX
 - [ ] Pixel-faithful preview / browser editor
 

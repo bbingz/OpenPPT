@@ -43,7 +43,7 @@ Optional start: copy `templates/pitch-skeleton/deck.json` and replace `{{PLACEHO
 - `shape` — `rect` \| `roundRect` \| `ellipse`
 - `image` — local `media/*`
 - `chart` — `bar` \| `line` \| `pie` \| `doughnut` \| `area` + `series[{name,labels?,values}]`
-- `group` — **layout helper** (not drawn): `layout: stack|row|grid`, `bounds`, `children` with `height`/`width`/`flex` — expanded at load (see `docs/IR.md`, `fixtures/layout-demo/`)
+- `group` — **layout helper** (not drawn): `layout: stack|row|grid|layer`, `bounds`, `children` with `height`/`width`/`flex` — expanded at load (see `docs/IR.md`, `fixtures/layout-demo/`, `demos/sspai-113139/`)
 
 ## Multi-file decks
 

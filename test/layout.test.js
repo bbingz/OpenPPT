@@ -96,6 +96,52 @@ describe("layout primitives (stack/row/grid)", () => {
     assert.deepEqual(els[2].bounds, [120, 0, 280, 100]);
   });
 
+  it("expands layer so all children share the same bounds", () => {
+    const deck = {
+      version: "openppt-1",
+      size: [200, 100],
+      pages: [
+        {
+          id: "p",
+          elements: [
+            {
+              id: "card",
+              type: "group",
+              layout: "layer",
+              bounds: [10, 10, 180, 80],
+              padding: 0,
+              children: [
+                {
+                  id: "bg",
+                  type: "shape",
+                  shape: "roundRect",
+                  fill: "#ffffff",
+                },
+                {
+                  id: "inner",
+                  type: "group",
+                  layout: "stack",
+                  padding: 10,
+                  gap: 0,
+                  children: [
+                    { id: "t", type: "text", height: 20, text: "Hi" },
+                    { id: "b", type: "text", flex: 1, text: "Body" },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    const out = expandLayouts(deck);
+    const els = out.pages[0].elements;
+    assert.equal(els.length, 3);
+    assert.deepEqual(els[0].bounds, [10, 10, 180, 80]); // bg fills card
+    assert.deepEqual(els[1].bounds, [20, 20, 160, 20]); // title after padding
+    assert.deepEqual(els[2].bounds, [20, 40, 160, 40]); // flex body
+  });
+
   it("expands grid into equal cells", () => {
     const deck = {
       version: "openppt-1",

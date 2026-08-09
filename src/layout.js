@@ -4,15 +4,18 @@
  *
  * Authoring form (not present in leaf schema after expansion):
  * {
- *   id, type: "group", bounds, layout: "stack"|"row"|"grid",
+ *   id, type: "group", bounds, layout: "stack"|"row"|"grid"|"layer",
  *   gap?, padding?, align?, justify?, columns?,
  *   children: [ leaf | nested group, with height|width|flex as needed ]
  * }
+ *
+ * layer: every child fills the group inner box (paint order = children order;
+ * later children draw on top). Ideal for card = shape bg + nested stack content.
  */
 
 import { OpenPptError, ErrorCodes } from "./errors.js";
 
-const LAYOUTS = new Set(["stack", "row", "grid"]);
+const LAYOUTS = new Set(["stack", "row", "grid", "layer"]);
 const ALIGNS = new Set(["start", "center", "end", "stretch"]);
 const JUSTIFIES = new Set(["start", "center", "end", "space-between"]);
 
@@ -201,10 +204,8 @@ function expandGroup(group, ctx) {
     );
   }
 
-  /** @type {Array<{ child: object, main: number, cross?: number, flex: number }>} */
-  const items = [];
-  for (let i = 0; i < group.children.length; i += 1) {
-    const child = group.children[i];
+  /** Validate child shell; return normalized child refs. */
+  const rawChildren = group.children.map((child, i) => {
     if (!child || typeof child !== "object" || Array.isArray(child)) {
       throw new OpenPptError(
         ErrorCodes.LAYOUT,
@@ -226,7 +227,29 @@ function expandGroup(group, ctx) {
         { groupId: group.id, childId: child.id },
       );
     }
+    return child;
+  });
 
+  // layer: every child fills the group (later = on top)
+  if (layout === "layer") {
+    const bounds = [innerX, innerY, innerW, innerH];
+    /** @type {object[]} */
+    const layerLeaves = [];
+    for (const child of rawChildren) {
+      if (child.type === "group") {
+        const nested = clone(child);
+        nested.bounds = bounds;
+        layerLeaves.push(...expandGroup(nested, `${ctx}/${group.id}`));
+      } else {
+        layerLeaves.push(toLeaf(child, bounds));
+      }
+    }
+    return layerLeaves;
+  }
+
+  /** @type {Array<{ child: object, main: number, cross?: number, flex: number }>} */
+  const items = [];
+  for (const child of rawChildren) {
     const flex =
       child.flex !== undefined && child.flex !== null ? child.flex : 0;
     assertFinite(flex, `group ${group.id} child ${child.id}.flex`);
@@ -304,9 +327,15 @@ function expandGroup(group, ctx) {
         }
       }
       items.push({ child, main: main ?? 0, cross, flex });
-    } else {
-      // grid: size hints ignored for equal cells
+    } else if (layout === "grid") {
+      // equal cells — size hints ignored
       items.push({ child, main: 0, flex: 0 });
+    } else {
+      throw new OpenPptError(
+        ErrorCodes.LAYOUT,
+        `Group ${group.id} unhandled layout "${layout}"`,
+        { groupId: group.id, layout },
+      );
     }
   }
 

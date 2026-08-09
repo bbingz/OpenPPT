@@ -117,7 +117,7 @@
           "id": "grid-title",
           "type": "text",
           "bounds": [48, 28, 864, 36],
-          "text": "Grid layout (2 columns)",
+          "text": "Grid + layer cards",
           "fontSize": 22,
           "bold": true,
           "color": "$primary"
@@ -132,9 +132,32 @@
           "children": [
             {
               "id": "g1",
-              "type": "shape",
-              "shape": "roundRect",
-              "fill": "$surface"
+              "type": "group",
+              "layout": "layer",
+              "children": [
+                {
+                  "id": "g1-bg",
+                  "type": "shape",
+                  "shape": "roundRect",
+                  "fill": "$surface"
+                },
+                {
+                  "id": "g1-pad",
+                  "type": "group",
+                  "layout": "stack",
+                  "padding": 20,
+                  "children": [
+                    {
+                      "id": "g1-t",
+                      "type": "text",
+                      "flex": 1,
+                      "text": "Layer card\nshape bg + padded text",
+                      "fontSize": 16,
+                      "color": "$text"
+                    }
+                  ]
+                }
+              ]
             },
             {
               "id": "g2",

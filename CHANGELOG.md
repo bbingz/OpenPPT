@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.4.1 — 2026-08-09
+
+- **layout:** `layout: "layer"` — all children fill the group (card = bg shape + nested stack)
+- Dogfood: `demos/sspai-113139` rewritten with stack/row/grid/layer (QA clean)
+- Themes: `themes/magazine.json`, `themes/report.json`
+- Pitch skeleton TOC + body use layout groups
+
 ## 1.4.0 — 2026-08-09
 
 - **layout primitives:** authoring `type: "group"` with `layout: stack|row|grid` expands at load into absolute leaf bounds (nested groups, `gap`, `padding`, `flex`, `height`/`width`, `align`, `justify`, grid `columns`)

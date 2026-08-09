@@ -69,36 +69,45 @@
           "color": "$primary"
         },
         {
-          "id": "toc-item-1",
-          "type": "text",
-          "bounds": [80, 140, 800, 36],
-          "text": "01  {{TOC_1}}",
-          "fontSize": 20,
-          "color": "$text"
-        },
-        {
-          "id": "toc-item-2",
-          "type": "text",
-          "bounds": [80, 200, 800, 36],
-          "text": "02  {{TOC_2}}",
-          "fontSize": 20,
-          "color": "$text"
-        },
-        {
-          "id": "toc-item-3",
-          "type": "text",
-          "bounds": [80, 260, 800, 36],
-          "text": "03  {{TOC_3}}",
-          "fontSize": 20,
-          "color": "$text"
-        },
-        {
-          "id": "toc-item-4",
-          "type": "text",
-          "bounds": [80, 320, 800, 36],
-          "text": "04  {{TOC_4}}",
-          "fontSize": 20,
-          "color": "$text"
+          "id": "toc-list",
+          "type": "group",
+          "layout": "stack",
+          "bounds": [80, 120, 800, 320],
+          "gap": 24,
+          "children": [
+            {
+              "id": "toc-item-1",
+              "type": "text",
+              "height": 40,
+              "text": "01  {{TOC_1}}",
+              "fontSize": 20,
+              "color": "$text"
+            },
+            {
+              "id": "toc-item-2",
+              "type": "text",
+              "height": 40,
+              "text": "02  {{TOC_2}}",
+              "fontSize": 20,
+              "color": "$text"
+            },
+            {
+              "id": "toc-item-3",
+              "type": "text",
+              "height": 40,
+              "text": "03  {{TOC_3}}",
+              "fontSize": 20,
+              "color": "$text"
+            },
+            {
+              "id": "toc-item-4",
+              "type": "text",
+              "height": 40,
+              "text": "04  {{TOC_4}}",
+              "fontSize": 20,
+              "color": "$text"
+            }
+          ]
         }
       ]
     },
@@ -116,32 +125,48 @@
           "color": "$primary"
         },
         {
-          "id": "body-card",
-          "type": "shape",
+          "id": "body-panel",
+          "type": "group",
+          "layout": "layer",
           "bounds": [48, 110, 864, 340],
-          "shape": "roundRect",
-          "fill": "$background",
-          "lineColor": "$primary",
-          "lineWidth": 1
-        },
-        {
-          "id": "body-copy",
-          "type": "text",
-          "bounds": [72, 140, 816, 220],
-          "text": "{{BODY}}",
-          "fontSize": 18,
-          "color": "$text",
-          "align": "left",
-          "valign": "top"
-        },
-        {
-          "id": "body-callout",
-          "type": "text",
-          "bounds": [72, 380, 816, 40],
-          "text": "{{CALLOUT}}",
-          "fontSize": 14,
-          "bold": true,
-          "color": "$accent"
+          "children": [
+            {
+              "id": "body-card",
+              "type": "shape",
+              "shape": "roundRect",
+              "fill": "$background",
+              "lineColor": "$primary",
+              "lineWidth": 1
+            },
+            {
+              "id": "body-inner",
+              "type": "group",
+              "layout": "stack",
+              "padding": 24,
+              "gap": 16,
+              "children": [
+                {
+                  "id": "body-copy",
+                  "type": "text",
+                  "flex": 1,
+                  "text": "{{BODY}}",
+                  "fontSize": 18,
+                  "color": "$text",
+                  "align": "left",
+                  "valign": "top"
+                },
+                {
+                  "id": "body-callout",
+                  "type": "text",
+                  "height": 40,
+                  "text": "{{CALLOUT}}",
+                  "fontSize": 14,
+                  "bold": true,
+                  "color": "$accent"
+                }
+              ]
+            }
+          ]
         }
       ]
     },

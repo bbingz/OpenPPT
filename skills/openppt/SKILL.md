@@ -50,7 +50,8 @@ Prefer absolute paths in the final reply.
   - Page ids and **element ids are unique deck-wide** (do not reuse `title` on every slide)
   - Images: **only** `media/...`; real image bytes; extensions `.png` `.jpg` `.jpeg` `.gif` `.webp` `.svg`
   - Charts: `type: "chart"`, `chartType` ∈ bar|line|pie|doughnut|area, `series[{name,values,labels?}]`
-  - **Layout groups (prefer for multi-block pages):** `type: "group"`, `layout: "stack"|"row"|"grid"`, `bounds`, `gap?`, `children` with `height`/`width`/`flex` — see `fixtures/layout-demo/deck.json` and `docs/IR.md`
+  - **Layout groups (prefer for multi-block pages):** `type: "group"`, `layout: "stack"|"row"|"grid"|"layer"`, `bounds`, `gap?`, `children` with `height`/`width`/`flex` — `layer` = card overlay (bg + content). See `fixtures/layout-demo/`, `demos/sspai-113139/`, `docs/IR.md`
+  - Themes to copy: `themes/default.json`, `dark.json`, `magazine.json`, `report.json`
   - Theme colors: `"$primary"` style tokens under `theme.colors`
   - First read: `docs/AGENT.md` (then schema if needed)
   - Multi-file: `pages: ["pages/cover.json", ...]` expanded at load
