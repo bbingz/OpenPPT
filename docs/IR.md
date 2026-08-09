@@ -31,7 +31,7 @@ Machine-readable schema: [`../schema/openppt-ir.schema.json`](../schema/openppt-
 - Neither rule lives in the JSON Schema (which cannot express cross-document
   uniqueness); both are enforced by `validateDeck`.
 
-## Element types (v1.1)
+## Element types (v1.1+)
 
 | type | Required fields | Notes |
 |---|---|---|
@@ -39,6 +39,42 @@ Machine-readable schema: [`../schema/openppt-ir.schema.json`](../schema/openppt-
 | `shape` | id, bounds, shape | shape ∈ rect, roundRect, ellipse; optional fill, lineColor, lineWidth |
 | `image` | id, bounds, src | **`media/...` only**; magic-byte check; optional `fit` (default **cover**, no stretch) |
 | `chart` | id, bounds, chartType, series | chartType ∈ bar, line, pie, doughnut, area; series[{name, values, labels?}] |
+| `group` | id, bounds, layout, children | **Authoring only** — expanded at load to leaves (see below) |
+
+## Layout primitives (v1.4)
+
+Agents may nest `type: "group"` instead of hand-computing every `[x,y,w,h]`.
+
+```json
+{
+  "id": "col",
+  "type": "group",
+  "layout": "stack",
+  "bounds": [48, 40, 864, 460],
+  "gap": 16,
+  "padding": 0,
+  "align": "stretch",
+  "justify": "start",
+  "children": [
+    { "id": "title", "type": "text", "height": 48, "text": "Hello", "fontSize": 28 },
+    { "id": "body", "type": "text", "flex": 1, "text": "Fills remaining height" }
+  ]
+}
+```
+
+| layout | Main axis | Child sizing |
+|---|---|---|
+| `stack` | vertical | each child needs `height` **or** `flex`; optional `width` + `align` |
+| `row` | horizontal | each child needs `width` **or** `flex`; optional `height` + `align` |
+| `grid` | 2D cells | `columns` (default 2); equal cell size; `gap` applies both axes |
+
+- `padding`: number, `[v,h]`, or `[t,r,b,l]`
+- `align`: `start` \| `center` \| `end` \| `stretch` (cross axis)
+- `justify`: `start` \| `center` \| `end` \| `space-between` (main axis leftover when no flex)
+- Nested groups allowed; group nodes are **removed** after expansion (not drawn)
+- Overflow of fixed sizes → `LAYOUT_INVALID` (fail-closed)
+- Leaf JSON Schema still describes post-expansion IR; `loadDeck` / `validateDeck` expand groups first
+- Demo: `fixtures/layout-demo/deck.json`
 
 ## Media policy
 

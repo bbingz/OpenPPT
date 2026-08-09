@@ -21,7 +21,7 @@ Usage:
   bun bin/openppt.js validate <deck.json|yaml>
   bun bin/openppt.js export   <deck.json|yaml> -o <out.pptx> [--force]
   bun bin/openppt.js import   <file.pptx> -o <project-dir> [--force]
-  bun bin/openppt.js qa       <deck.json|yaml>
+  bun bin/openppt.js qa       <deck.json|yaml> [--fail-on low|med|high|critical]
   bun bin/openppt.js preview  <deck.json|yaml> -o <out.html>
   bun bin/openppt.js -h | --help
   bun bin/openppt.js -V | --version
@@ -29,8 +29,10 @@ Usage:
 Notes:
   - Schema: schema/openppt-ir.schema.json
   - Agents: docs/AGENT.md
+  - Layout groups (stack|row|grid) expand at load before validate/export
   - Export uses pptxgenjs only (no Kimi/neo-ppt WASM)
   - import is lossy (text/shapes/images)
+  - qa --fail-on default: high (exit 1 if high/critical issues)
   - Runtime: Bun
 `);
 }
@@ -42,6 +44,7 @@ function parseArgs(argv) {
     input: null,
     output: null,
     force: false,
+    failOn: null,
     help: false,
     version: false,
   };
@@ -58,6 +61,17 @@ function parseArgs(argv) {
     }
     if (a === "--force") {
       opts.force = true;
+      continue;
+    }
+    if (a === "--fail-on") {
+      const value = args.shift();
+      if (!value || value.startsWith("-")) {
+        throw new Error(`--fail-on requires low|med|high|critical (got ${value ?? "nothing"})`);
+      }
+      if (!["low", "med", "high", "critical"].includes(value)) {
+        throw new Error(`--fail-on must be low|med|high|critical (got ${value})`);
+      }
+      opts.failOn = value;
       continue;
     }
     if (a === "-o" || a === "--output") {
@@ -159,7 +173,11 @@ async function main() {
 
     if (opts.command === "qa") {
       const { qaDeck } = await import("../src/qa.js");
-      const result = qaDeck(deck, { projectRoot, checkMedia: true });
+      const result = qaDeck(deck, {
+        projectRoot,
+        checkMedia: true,
+        failOn: opts.failOn || "high",
+      });
       console.log(JSON.stringify(result, null, 2));
       process.exit(result.ok ? 0 : 1);
     }

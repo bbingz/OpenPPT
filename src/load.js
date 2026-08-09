@@ -3,6 +3,7 @@ import { dirname, extname, isAbsolute, resolve } from "node:path";
 import { parse as parseYaml } from "yaml";
 import { OpenPptError, ErrorCodes } from "./errors.js";
 import { safeProjectPath } from "./validate.js";
+import { expandLayouts } from "./layout.js";
 
 /**
  * Parse a JSON or YAML file into an object.
@@ -94,7 +95,9 @@ export function loadDeck(filePath) {
   const sourcePath = resolve(filePath);
   const projectRoot = dirname(sourcePath);
   const rawDeck = parseDocumentFile(sourcePath);
-  const deck = expandExternalPages(rawDeck, projectRoot);
+  // Multi-file pages first, then layout groups → absolute leaf bounds.
+  const withPages = expandExternalPages(rawDeck, projectRoot);
+  const deck = expandLayouts(withPages);
   return {
     deck,
     projectRoot,

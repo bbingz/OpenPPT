@@ -10,6 +10,7 @@ bun install
 bun bin/openppt.js validate path/to/deck.json
 bun bin/openppt.js export  path/to/deck.json -o path/to/deck.pptx --force
 bun bin/openppt.js qa      path/to/deck.json
+bun bin/openppt.js qa      path/to/deck.json --fail-on med   # CI-stricter
 bun bin/openppt.js preview path/to/deck.json -o path/to/preview.html
 bun bin/openppt.js import  path/to/file.pptx -o path/to/project/ --force
 ```
@@ -42,6 +43,7 @@ Optional start: copy `templates/pitch-skeleton/deck.json` and replace `{{PLACEHO
 - `shape` — `rect` \| `roundRect` \| `ellipse`
 - `image` — local `media/*`
 - `chart` — `bar` \| `line` \| `pie` \| `doughnut` \| `area` + `series[{name,labels?,values}]`
+- `group` — **layout helper** (not drawn): `layout: stack|row|grid`, `bounds`, `children` with `height`/`width`/`flex` — expanded at load (see `docs/IR.md`, `fixtures/layout-demo/`)
 
 ## Multi-file decks
 

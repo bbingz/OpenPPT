@@ -3,6 +3,28 @@
  */
 
 import { validateDeck } from "./validate.js";
+import { SeverityRank } from "./errors.js";
+
+/**
+ * Rank for a severity string (unknown → 0).
+ * @param {string} severity
+ */
+export function severityRank(severity) {
+  return SeverityRank[severity] || 0;
+}
+
+/**
+ * Whether any issue meets or exceeds the fail-on threshold.
+ * @param {Array<{ severity: string }>} issues
+ * @param {string} failOn low|med|high|critical
+ */
+export function issuesFailThreshold(issues, failOn = "high") {
+  const threshold = severityRank(failOn);
+  if (threshold <= 0) {
+    throw new Error(`Invalid fail-on severity: ${failOn}`);
+  }
+  return issues.some((i) => severityRank(i.severity) >= threshold);
+}
 
 /**
  * Axis-aligned rectangle intersection area.
@@ -114,19 +136,24 @@ export function analyzeLayout(deck) {
     }
   }
 
-  const ok = !issues.some((i) => i.severity === "high" || i.severity === "critical");
+  // Default ok: no high/critical (matches historical --fail-on high)
+  const ok = !issuesFailThreshold(issues, "high");
   return { ok, issues };
 }
 
 /**
  * Validate + layout QA.
  * @param {object} deck
- * @param {{ projectRoot?: string, checkMedia?: boolean }} [options]
+ * @param {{ projectRoot?: string, checkMedia?: boolean, failOn?: string }} [options]
+ * @returns {{ ok: boolean, issues: Array<object>, failOn: string }}
  */
 export function qaDeck(deck, options = {}) {
   validateDeck(deck, {
     projectRoot: options.projectRoot,
     checkMedia: options.checkMedia !== false,
   });
-  return analyzeLayout(deck);
+  const result = analyzeLayout(deck);
+  const failOn = options.failOn || "high";
+  const ok = !issuesFailThreshold(result.issues, failOn);
+  return { ...result, ok, failOn };
 }

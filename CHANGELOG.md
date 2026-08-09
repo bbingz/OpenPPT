@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.4.0 — 2026-08-09
+
+- **layout primitives:** authoring `type: "group"` with `layout: stack|row|grid` expands at load into absolute leaf bounds (nested groups, `gap`, `padding`, `flex`, `height`/`width`, `align`, `justify`, grid `columns`)
+- Fail-closed overflow: `LAYOUT_INVALID` when fixed children exceed the group
+- **qa:** `--fail-on low|med|high|critical` (default `high`) gates process exit for CI
+- Fixture: `fixtures/layout-demo/deck.json`
+
 ## 1.3.1 — 2026-08-09
 
 - **fix:** images default to `fit: cover` without stretch. pptxgenjs uses placement w/h as image aspect — compiler now reads natural pixel size and passes correct aspect so OOXML `srcRect` actually crops

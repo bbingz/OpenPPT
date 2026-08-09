@@ -27,3 +27,13 @@ Under [`pages/`](pages/) — single page objects for agents that assemble multi-
 - `final.json`
 
 These are **not** full IR documents (no `version` / `size` / `theme`). Merge into a root deck before export.
+
+## Layout demo (groups)
+
+Prefer `type: "group"` with `stack` / `row` / `grid` instead of hand-placing every box:
+
+```bash
+bun bin/openppt.js export fixtures/layout-demo/deck.json -o out/layout.pptx --force
+```
+
+See `docs/IR.md` § Layout primitives.

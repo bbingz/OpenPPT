@@ -1,0 +1,168 @@
+{
+  "version": "openppt-1",
+  "title": "Layout primitives demo",
+  "size": [960, 540],
+  "theme": {
+    "colors": {
+      "primary": "#2563EB",
+      "text": "#111827",
+      "muted": "#6B7280",
+      "background": "#FFFFFF",
+      "surface": "#F1F5F9",
+      "accent": "#F59E0B"
+    }
+  },
+  "pages": [
+    {
+      "id": "stack-page",
+      "background": { "type": "solid", "color": "$background" },
+      "elements": [
+        {
+          "id": "stack-main",
+          "type": "group",
+          "layout": "stack",
+          "bounds": [48, 40, 864, 460],
+          "gap": 16,
+          "children": [
+            {
+              "id": "stack-title",
+              "type": "text",
+              "height": 48,
+              "text": "Stack layout",
+              "fontSize": 28,
+              "bold": true,
+              "color": "$primary"
+            },
+            {
+              "id": "stack-sub",
+              "type": "text",
+              "height": 32,
+              "text": "Children share the vertical axis with gap + flex.",
+              "fontSize": 14,
+              "color": "$muted"
+            },
+            {
+              "id": "stack-body",
+              "type": "text",
+              "flex": 1,
+              "text": "This block takes remaining height (flex: 1). Agents can avoid hand-computing absolute Y coordinates.",
+              "fontSize": 16,
+              "color": "$text"
+            },
+            {
+              "id": "stack-footer",
+              "type": "shape",
+              "height": 48,
+              "shape": "roundRect",
+              "fill": "$surface"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "row-page",
+      "background": { "type": "solid", "color": "$background" },
+      "elements": [
+        {
+          "id": "row-main",
+          "type": "group",
+          "layout": "row",
+          "bounds": [48, 40, 864, 460],
+          "gap": 24,
+          "align": "stretch",
+          "children": [
+            {
+              "id": "row-left",
+              "type": "group",
+              "layout": "stack",
+              "width": 280,
+              "gap": 12,
+              "children": [
+                {
+                  "id": "row-left-title",
+                  "type": "text",
+                  "height": 40,
+                  "text": "Row + nested stack",
+                  "fontSize": 20,
+                  "bold": true,
+                  "color": "$primary"
+                },
+                {
+                  "id": "row-left-body",
+                  "type": "text",
+                  "flex": 1,
+                  "text": "Left column is a nested stack. Width is fixed; body flexes.",
+                  "fontSize": 14,
+                  "color": "$text"
+                }
+              ]
+            },
+            {
+              "id": "row-right",
+              "type": "shape",
+              "flex": 1,
+              "shape": "roundRect",
+              "fill": "$surface"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "grid-page",
+      "background": { "type": "solid", "color": "$background" },
+      "elements": [
+        {
+          "id": "grid-title",
+          "type": "text",
+          "bounds": [48, 28, 864, 36],
+          "text": "Grid layout (2 columns)",
+          "fontSize": 22,
+          "bold": true,
+          "color": "$primary"
+        },
+        {
+          "id": "grid-main",
+          "type": "group",
+          "layout": "grid",
+          "columns": 2,
+          "gap": 16,
+          "bounds": [48, 80, 864, 420],
+          "children": [
+            {
+              "id": "g1",
+              "type": "shape",
+              "shape": "roundRect",
+              "fill": "$surface"
+            },
+            {
+              "id": "g2",
+              "type": "shape",
+              "shape": "roundRect",
+              "fill": "$primary"
+            },
+            {
+              "id": "g3",
+              "type": "text",
+              "text": "Cell 3",
+              "fontSize": 18,
+              "color": "$text",
+              "align": "center",
+              "valign": "middle"
+            },
+            {
+              "id": "g4",
+              "type": "text",
+              "text": "Cell 4",
+              "fontSize": 18,
+              "color": "$text",
+              "align": "center",
+              "valign": "middle"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

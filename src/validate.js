@@ -3,6 +3,7 @@ import { isAbsolute, extname, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import Ajv2020 from "ajv/dist/2020.js";
 import { OpenPptError, ErrorCodes } from "./errors.js";
+import { expandLayouts, deckHasGroups } from "./layout.js";
 
 /** Allowed image extensions for local media (lowercase, with dot). */
 const MEDIA_EXTENSIONS = new Set([
@@ -214,6 +215,13 @@ export function safeProjectPath(projectRoot, userPath) {
  */
 export function validateDeck(deck, options = {}) {
   const { projectRoot, checkMedia = true } = options;
+  // Expand layout groups if caller passed pre-load authoring IR.
+  // loadDeck already expands; expandLayouts is idempotent for leaf-only decks.
+  if (deckHasGroups(deck)) {
+    const expanded = expandLayouts(deck);
+    deck.pages = expanded.pages;
+  }
+
   const validate = getSchemaValidator();
   const schemaOk = validate(deck);
   if (!schemaOk) {

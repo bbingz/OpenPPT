@@ -22,6 +22,15 @@ export const ErrorCodes = {
   MEDIA_MISSING: "MEDIA_MISSING",
   MEDIA_TYPE: "MEDIA_TYPE_INVALID",
   THEME_COLOR: "THEME_COLOR_UNRESOLVED",
+  LAYOUT: "LAYOUT_INVALID",
   IO: "IO_ERROR",
   EXPORT: "EXPORT_FAILED",
+};
+
+/** QA issue severity rank (higher = worse). */
+export const SeverityRank = {
+  low: 1,
+  med: 2,
+  high: 3,
+  critical: 4,
 };

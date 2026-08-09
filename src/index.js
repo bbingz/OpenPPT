@@ -16,9 +16,19 @@ export {
 } from "./validate.js";
 export { compileToPptx, compileToBuffer } from "./compile.js";
 export { importPptx } from "./import-pptx.js";
-export { analyzeLayout, qaDeck } from "./qa.js";
+export {
+  analyzeLayout,
+  qaDeck,
+  issuesFailThreshold,
+  severityRank,
+} from "./qa.js";
+export {
+  expandLayouts,
+  expandPageLayouts,
+  deckHasGroups,
+} from "./layout.js";
 export { renderPreviewHtml, writePreviewHtml } from "./preview.js";
-export { OpenPptError, ErrorCodes } from "./errors.js";
+export { OpenPptError, ErrorCodes, SeverityRank } from "./errors.js";
 
 /**
  * High-level: load file → validate → export PPTX.

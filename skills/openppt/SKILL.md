@@ -50,6 +50,7 @@ Prefer absolute paths in the final reply.
   - Page ids and **element ids are unique deck-wide** (do not reuse `title` on every slide)
   - Images: **only** `media/...`; real image bytes; extensions `.png` `.jpg` `.jpeg` `.gif` `.webp` `.svg`
   - Charts: `type: "chart"`, `chartType` ∈ bar|line|pie|doughnut|area, `series[{name,values,labels?}]`
+  - **Layout groups (prefer for multi-block pages):** `type: "group"`, `layout: "stack"|"row"|"grid"`, `bounds`, `gap?`, `children` with `height`/`width`/`flex` — see `fixtures/layout-demo/deck.json` and `docs/IR.md`
   - Theme colors: `"$primary"` style tokens under `theme.colors`
   - First read: `docs/AGENT.md` (then schema if needed)
   - Multi-file: `pages: ["pages/cover.json", ...]` expanded at load
@@ -60,6 +61,7 @@ Prefer absolute paths in the final reply.
 ```bash
 bun "$OPENPPT_ROOT/bin/openppt.js" validate /abs/path/deck.json
 bun "$OPENPPT_ROOT/bin/openppt.js" qa       /abs/path/deck.json
+bun "$OPENPPT_ROOT/bin/openppt.js" qa       /abs/path/deck.json --fail-on med
 bun "$OPENPPT_ROOT/bin/openppt.js" export  /abs/path/deck.json -o /abs/path/deck.pptx --force
 bun "$OPENPPT_ROOT/bin/openppt.js" preview /abs/path/deck.json -o /abs/path/preview.html
 ```
@@ -72,7 +74,7 @@ bun "$OPENPPT_ROOT/bin/openppt.js" import /abs/path/in.pptx -o /abs/path/project
 
 If `OPENPPT_ROOT` is the current directory, use `bun bin/openppt.js ...`.
 
-Fix `SCHEMA_INVALID` / `BOUNDS_OUT_OF_RANGE` / `MEDIA_MISSING` / `MEDIA_TYPE_INVALID` / `THEME_COLOR_UNRESOLVED` before re-exporting. Fail-closed: do not hand-edit the PPTX to “paper over” IR errors.
+Fix `SCHEMA_INVALID` / `BOUNDS_OUT_OF_RANGE` / `LAYOUT_INVALID` / `MEDIA_MISSING` / `MEDIA_TYPE_INVALID` / `THEME_COLOR_UNRESOLVED` before re-exporting. Fail-closed: do not hand-edit the PPTX to “paper over” IR errors.
 
 ### 4. Templates (skeletons)
 

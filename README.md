@@ -6,7 +6,7 @@ OpenPPT fills the open-source gap left by proprietary “YAML deck + closed WASM
 
 | | |
 |---|---|
-| **Version** | **1.3.1** |
+| **Version** | **1.4.0** |
 | **License** | Apache-2.0 (see `LICENSE` + `NOTICE`) |
 | **Runtime** | **Bun** ≥ 1.1 (preferred; scripts and shebang use Bun) |
 | **Default exporter** | [pptxgenjs](https://github.com/gitbrent/PptxGenJS) (MIT) |
@@ -30,8 +30,9 @@ bun bin/openppt.js export fixtures/golden/deck.json -o out/deck.pptx --force
 # lossy import PPTX → IR project
 bun bin/openppt.js import out/deck.pptx -o recovered/ --force
 
-# structural layout QA (JSON report)
+# structural layout QA (JSON report; --fail-on low|med|high|critical)
 bun bin/openppt.js qa fixtures/golden/deck.json
+bun bin/openppt.js qa fixtures/golden/deck.json --fail-on med
 
 # offline HTML preview
 bun bin/openppt.js preview fixtures/golden/deck.json -o out/preview.html
@@ -60,6 +61,7 @@ Installs `openppt` under `~/.agents/skills` (and `~/.claude` / `~/.codex` / `~/.
 - **Canvas:** `size: [width, height]` in CSS pixels (default fixture uses 960×540)
 - **Theme tokens:** `"$primary"` style references under `theme.colors`
 - **Elements (v1.2):** `text` (string or **rich runs**) · `shape` · `image` · `chart`
+- **Layout groups (v1.4):** `type: "group"` with `layout: stack|row|grid` → absolute bounds at load
 - **Multi-file:** `pages` may list relative page files (e.g. `"pages/cover.json"`)
 - **Bounds:** absolute `[x, y, width, height]` — must fit inside the canvas
 - **IDs:** page ids and element ids must each be unique **across the whole deck**
@@ -71,6 +73,8 @@ Golden fixture: [`fixtures/golden/deck.json`](fixtures/golden/deck.json) (2 page
 **Templates:** [`templates/pitch-skeleton/deck.json`](templates/pitch-skeleton/deck.json) (cover · TOC · body · final) and page fragments under [`templates/pages/`](templates/pages/). See [`templates/README.md`](templates/README.md).
 
 **Charts demo:** [`fixtures/chart-demo/deck.json`](fixtures/chart-demo/deck.json).
+
+**Layout demo:** [`fixtures/layout-demo/deck.json`](fixtures/layout-demo/deck.json) (stack · nested row · grid).
 
 **Agents:** start with [`docs/AGENT.md`](docs/AGENT.md).
 
