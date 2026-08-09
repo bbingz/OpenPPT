@@ -10,8 +10,8 @@ v1.0 ships the **core open IR → open PPTX compiler** gap. Remaining items from
 - [ ] Rich text spans (bold/color runs inside one box)
 
 ## P2 — agent UX
-- [ ] Thin `SKILL.md` package for Claude/Codex/Cursor
-- [ ] Template skeletons (cover / TOC / body / final) bound to theme tokens
+- [x] Thin `SKILL.md` package for Claude/Codex/Cursor (`skills/openppt/`, `bun run install:skill`)
+- [x] Template skeletons (cover / TOC / body / final) bound to theme tokens (`templates/`)
 - [ ] Progressive disclosure docs (schema-first, not 2k-line prose)
 
 ## P3 — quality & layout

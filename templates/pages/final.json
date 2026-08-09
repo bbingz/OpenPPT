@@ -1,0 +1,42 @@
+{
+  "id": "final",
+  "background": { "type": "solid", "color": "$background" },
+  "elements": [
+    {
+      "id": "final-bar",
+      "type": "shape",
+      "bounds": [0, 530, 960, 10],
+      "shape": "rect",
+      "fill": "$primary"
+    },
+    {
+      "id": "final-title",
+      "type": "text",
+      "bounds": [60, 180, 840, 64],
+      "text": "{{CLOSING}}",
+      "fontSize": 32,
+      "bold": true,
+      "color": "$text",
+      "align": "center",
+      "valign": "middle"
+    },
+    {
+      "id": "final-cta",
+      "type": "text",
+      "bounds": [60, 280, 840, 40],
+      "text": "{{CTA}}",
+      "fontSize": 18,
+      "color": "$primary",
+      "align": "center"
+    },
+    {
+      "id": "final-contact",
+      "type": "text",
+      "bounds": [60, 420, 840, 40],
+      "text": "{{CONTACT}}",
+      "fontSize": 14,
+      "color": "$muted",
+      "align": "center"
+    }
+  ]
+}

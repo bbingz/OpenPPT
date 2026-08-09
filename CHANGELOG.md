@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.2 — 2026-08-09
+
+- Published repo: https://github.com/bbingz/OpenPPT
+- Agent skill: `skills/openppt/SKILL.md` + `bun run install:skill`
+- Templates: pitch skeleton (cover/TOC/body/final) and page fragments under `templates/`
+- Tests cover pitch-skeleton validate + export
+
 ## 1.0.1 — 2026-08-08
 
 - Bun is the supported runtime (`bun install`, `bun test ./test/`, `bun bin/openppt.js`).

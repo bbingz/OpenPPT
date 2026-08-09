@@ -1,0 +1,42 @@
+{
+  "id": "cover",
+  "background": { "type": "solid", "color": "$background" },
+  "elements": [
+    {
+      "id": "cover-bar",
+      "type": "shape",
+      "bounds": [0, 0, 960, 10],
+      "shape": "rect",
+      "fill": "$primary"
+    },
+    {
+      "id": "cover-title",
+      "type": "text",
+      "bounds": [60, 180, 840, 72],
+      "text": "{{TITLE}}",
+      "fontSize": 36,
+      "bold": true,
+      "color": "$text",
+      "align": "left",
+      "valign": "middle"
+    },
+    {
+      "id": "cover-subtitle",
+      "type": "text",
+      "bounds": [60, 260, 840, 40],
+      "text": "{{SUBTITLE}}",
+      "fontSize": 18,
+      "color": "$muted",
+      "align": "left"
+    },
+    {
+      "id": "cover-footer",
+      "type": "text",
+      "bounds": [60, 480, 840, 28],
+      "text": "{{FOOTER}}",
+      "fontSize": 12,
+      "color": "$muted",
+      "align": "left"
+    }
+  ]
+}

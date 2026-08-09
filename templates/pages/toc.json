@@ -1,0 +1,47 @@
+{
+  "id": "toc",
+  "background": { "type": "solid", "color": "$surface" },
+  "elements": [
+    {
+      "id": "toc-heading",
+      "type": "text",
+      "bounds": [60, 40, 840, 48],
+      "text": "Agenda",
+      "fontSize": 28,
+      "bold": true,
+      "color": "$primary"
+    },
+    {
+      "id": "toc-item-1",
+      "type": "text",
+      "bounds": [80, 140, 800, 36],
+      "text": "01  {{TOC_1}}",
+      "fontSize": 20,
+      "color": "$text"
+    },
+    {
+      "id": "toc-item-2",
+      "type": "text",
+      "bounds": [80, 200, 800, 36],
+      "text": "02  {{TOC_2}}",
+      "fontSize": 20,
+      "color": "$text"
+    },
+    {
+      "id": "toc-item-3",
+      "type": "text",
+      "bounds": [80, 260, 800, 36],
+      "text": "03  {{TOC_3}}",
+      "fontSize": 20,
+      "color": "$text"
+    },
+    {
+      "id": "toc-item-4",
+      "type": "text",
+      "bounds": [80, 320, 800, 36],
+      "text": "04  {{TOC_4}}",
+      "fontSize": 20,
+      "color": "$text"
+    }
+  ]
+}

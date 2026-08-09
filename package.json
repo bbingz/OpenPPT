@@ -1,6 +1,6 @@
 {
   "name": "openppt",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Open intermediate representation (IR) and open-source compiler for editable PowerPoint (.pptx). No proprietary Kimi/neo-ppt WASM runtime. Runtime: Bun.",
   "license": "Apache-2.0",
   "type": "module",
@@ -15,19 +15,32 @@
     "bin/",
     "src/",
     "schema/",
-    "fixtures/golden/deck.json",
-    "fixtures/golden/media/accent.png",
+    "fixtures/golden/",
     "themes/",
+    "templates/",
+    "skills/",
+    "scripts/install-skill.sh",
     "README.md",
     "LICENSE",
     "NOTICE",
     "docs/IR.md",
-    "docs/BACKLOG.md"
+    "docs/BACKLOG.md",
+    "CHANGELOG.md"
   ],
   "scripts": {
     "test": "bun test ./test/",
     "export:golden": "bun bin/openppt.js export fixtures/golden/deck.json -o fixtures/golden/out/deck.pptx --force",
-    "validate:golden": "bun bin/openppt.js validate fixtures/golden/deck.json"
+    "validate:golden": "bun bin/openppt.js validate fixtures/golden/deck.json",
+    "export:pitch": "bun bin/openppt.js export templates/pitch-skeleton/deck.json -o templates/pitch-skeleton/out/pitch.pptx --force",
+    "install:skill": "bash scripts/install-skill.sh"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bbingz/OpenPPT.git"
+  },
+  "homepage": "https://github.com/bbingz/OpenPPT#readme",
+  "bugs": {
+    "url": "https://github.com/bbingz/OpenPPT/issues"
   },
   "engines": {
     "bun": ">=1.1.0"

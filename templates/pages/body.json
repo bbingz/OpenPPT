@@ -1,0 +1,43 @@
+{
+  "id": "body",
+  "background": { "type": "solid", "color": "$surface" },
+  "elements": [
+    {
+      "id": "body-heading",
+      "type": "text",
+      "bounds": [48, 36, 864, 48],
+      "text": "{{SECTION_TITLE}}",
+      "fontSize": 28,
+      "bold": true,
+      "color": "$primary"
+    },
+    {
+      "id": "body-card",
+      "type": "shape",
+      "bounds": [48, 110, 864, 340],
+      "shape": "roundRect",
+      "fill": "$background",
+      "lineColor": "$primary",
+      "lineWidth": 1
+    },
+    {
+      "id": "body-copy",
+      "type": "text",
+      "bounds": [72, 140, 816, 220],
+      "text": "{{BODY}}",
+      "fontSize": 18,
+      "color": "$text",
+      "align": "left",
+      "valign": "top"
+    },
+    {
+      "id": "body-callout",
+      "type": "text",
+      "bounds": [72, 380, 816, 40],
+      "text": "{{CALLOUT}}",
+      "fontSize": 14,
+      "bold": true,
+      "color": "$accent"
+    }
+  ]
+}

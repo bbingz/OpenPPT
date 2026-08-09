@@ -38,4 +38,4 @@ backups/
 docs/discovery/*.zip
 .grok/
 fixtures/**/out/
-fixtures/**/out/
+templates/**/out/

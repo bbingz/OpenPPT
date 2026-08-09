@@ -6,15 +6,17 @@ OpenPPT fills the open-source gap left by proprietary “YAML deck + closed WASM
 
 | | |
 |---|---|
-| **Version** | **1.0.1** |
+| **Version** | **1.0.2** |
 | **License** | Apache-2.0 (see `LICENSE` + `NOTICE`) |
 | **Runtime** | **Bun** ≥ 1.1 (preferred; scripts and shebang use Bun) |
 | **Default exporter** | [pptxgenjs](https://github.com/gitbrent/PptxGenJS) (MIT) |
+| **Repo** | https://github.com/bbingz/OpenPPT |
 
 ## Install (local)
 
 ```bash
-cd /path/to/OpenPPT
+git clone https://github.com/bbingz/OpenPPT.git
+cd OpenPPT
 bun install
 ```
 
@@ -24,9 +26,23 @@ bun bin/openppt.js validate fixtures/golden/deck.json
 
 # export editable PPTX
 bun bin/openppt.js export fixtures/golden/deck.json -o out/deck.pptx --force
+
+# pitch skeleton (cover + TOC + body + final)
+bun bin/openppt.js export templates/pitch-skeleton/deck.json -o out/pitch.pptx --force
 ```
 
 After linking, the binary name is `openppt` (shebang: `#!/usr/bin/env bun`).
+
+### Agent skill
+
+Thin skill for Claude Code / Codex / Cursor (and any SKILL.md host):
+
+```bash
+bun run install:skill
+# or: bash scripts/install-skill.sh
+```
+
+Installs `openppt` under `~/.agents/skills` (and `~/.claude` / `~/.codex` / `~/.cursor` / `~/.grok` when those trees exist). Source of truth: [`skills/openppt/SKILL.md`](skills/openppt/SKILL.md).
 
 ## Open IR (v1)
 
@@ -42,6 +58,8 @@ After linking, the binary name is `openppt` (shebang: `#!/usr/bin/env bun`).
   symlinks leaving the project root are rejected
 
 Golden fixture: [`fixtures/golden/deck.json`](fixtures/golden/deck.json) (2 pages: cover + body, text/shape/image).
+
+**Templates:** [`templates/pitch-skeleton/deck.json`](templates/pitch-skeleton/deck.json) (cover · TOC · body · final) and page fragments under [`templates/pages/`](templates/pages/). See [`templates/README.md`](templates/README.md).
 
 ### Minimal example
 
