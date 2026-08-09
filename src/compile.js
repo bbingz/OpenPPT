@@ -90,19 +90,37 @@ function buildPresentation(deck, colors, projectRoot) {
       };
 
       if (el.type === "text") {
-        const color = el.color
+        const baseColor = el.color
           ? toPptxColor(resolveColor(el.color, colors, el.id)).replace("#", "")
           : "111827";
         // fontSize is IR points (pptxgenjs unit), not CSS px — see docs/IR.md
-        slide.addText(el.text, {
+        const boxOpts = {
           ...box,
           fontSize: el.fontSize ?? 18,
           fontFace: el.fontFamily || "Arial",
-          color,
+          color: baseColor,
           bold: Boolean(el.bold),
           align: el.align || "left",
           valign: el.valign || "top",
-        });
+        };
+        if (Array.isArray(el.text)) {
+          const runs = el.text.map((run) => {
+            const options = {};
+            if (run.bold !== undefined) options.bold = Boolean(run.bold);
+            if (run.italic !== undefined) options.italic = Boolean(run.italic);
+            if (run.fontSize !== undefined) options.fontSize = run.fontSize;
+            if (run.fontFamily) options.fontFace = run.fontFamily;
+            if (run.color) {
+              options.color = toPptxColor(
+                resolveColor(run.color, colors, `${el.id}.run`),
+              ).replace("#", "");
+            }
+            return { text: run.text, options };
+          });
+          slide.addText(runs, boxOpts);
+        } else {
+          slide.addText(el.text, boxOpts);
+        }
       } else if (el.type === "shape") {
         const fill = el.fill
           ? toPptxColor(resolveColor(el.fill, colors, el.id)).replace("#", "")

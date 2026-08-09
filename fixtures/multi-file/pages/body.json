@@ -1,0 +1,23 @@
+{
+  "id": "body",
+  "background": { "type": "solid", "color": "$surface" },
+  "elements": [
+    {
+      "id": "body-heading",
+      "type": "text",
+      "bounds": [48, 40, 864, 40],
+      "text": "External page files",
+      "fontSize": 24,
+      "bold": true,
+      "color": "$primary"
+    },
+    {
+      "id": "body-copy",
+      "type": "text",
+      "bounds": [48, 120, 864, 200],
+      "text": "This page was loaded from pages/body.json referenced by deck.json.",
+      "fontSize": 18,
+      "color": "$text"
+    }
+  ]
+}

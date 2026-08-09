@@ -1,0 +1,18 @@
+{
+  "id": "cover",
+  "background": { "type": "solid", "color": "$background" },
+  "elements": [
+    {
+      "id": "cover-title",
+      "type": "text",
+      "bounds": [60, 200, 840, 60],
+      "text": [
+        { "text": "OpenPPT ", "bold": true, "color": "$primary" },
+        { "text": "multi-file", "color": "$text" }
+      ],
+      "fontSize": 32,
+      "align": "center",
+      "valign": "middle"
+    }
+  ]
+}

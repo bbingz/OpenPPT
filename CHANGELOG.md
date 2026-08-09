@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.0 — 2026-08-09
+
+- **Multi-file decks:** `pages` may reference relative page JSON/YAML files under the project
+- **Rich text:** `text` may be an array of runs `{text, bold?, italic?, color?, fontSize?, fontFamily?}`
+- Fixture `fixtures/multi-file/` + tests
+
 ## 1.1.0 — 2026-08-09
 
 - **Charts:** IR `chart` elements (`bar` / `line` / `pie` / `doughnut` / `area`) exported via pptxgenjs

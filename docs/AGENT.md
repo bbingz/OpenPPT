@@ -35,10 +35,22 @@ Optional start: copy `templates/pitch-skeleton/deck.json` and replace `{{PLACEHO
 
 ## Element types
 
-- `text` — string box
+- `text` — string **or** run array `[{text, bold?, color?, fontSize?, italic?}]`
 - `shape` — `rect` \| `roundRect` \| `ellipse`
 - `image` — local `media/*`
 - `chart` — `bar` \| `line` \| `pie` \| `doughnut` \| `area` + `series[{name,labels?,values}]`
+
+## Multi-file decks
+
+```json
+{
+  "version": "openppt-1",
+  "size": [960, 540],
+  "pages": ["pages/cover.json", "pages/body.json"]
+}
+```
+
+Page files are full page objects (`id` + `elements`). Paths must stay inside the project (path jail).
 
 ## Sources of truth (in order)
 

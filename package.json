@@ -1,6 +1,6 @@
 {
   "name": "openppt",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Open intermediate representation (IR) and open-source compiler for editable PowerPoint (.pptx). No proprietary Kimi/neo-ppt WASM runtime. Runtime: Bun.",
   "license": "Apache-2.0",
   "type": "module",

@@ -6,7 +6,7 @@ OpenPPT fills the open-source gap left by proprietary “YAML deck + closed WASM
 
 | | |
 |---|---|
-| **Version** | **1.1.0** |
+| **Version** | **1.2.0** |
 | **License** | Apache-2.0 (see `LICENSE` + `NOTICE`) |
 | **Runtime** | **Bun** ≥ 1.1 (preferred; scripts and shebang use Bun) |
 | **Default exporter** | [pptxgenjs](https://github.com/gitbrent/PptxGenJS) (MIT) |
@@ -50,7 +50,8 @@ Installs `openppt` under `~/.agents/skills` (and `~/.claude` / `~/.codex` / `~/.
 - **Version marker:** `"version": "openppt-1"`
 - **Canvas:** `size: [width, height]` in CSS pixels (default fixture uses 960×540)
 - **Theme tokens:** `"$primary"` style references under `theme.colors`
-- **Elements (v1.1):** `text` · `shape` · `image` · **`chart`** (`bar` \| `line` \| `pie` \| `doughnut` \| `area`)
+- **Elements (v1.2):** `text` (string or **rich runs**) · `shape` · `image` · `chart`
+- **Multi-file:** `pages` may list relative page files (e.g. `"pages/cover.json"`)
 - **Bounds:** absolute `[x, y, width, height]` — must fit inside the canvas
 - **IDs:** page ids and element ids must each be unique **across the whole deck**
   (element ids are not scoped per page — don't reuse `title` on every slide)

@@ -42,7 +42,16 @@
     "pages": {
       "type": "array",
       "minItems": 1,
-      "items": { "$ref": "#/$defs/page" }
+      "items": {
+        "oneOf": [
+          { "$ref": "#/$defs/page" },
+          {
+            "type": "string",
+            "minLength": 1,
+            "description": "Relative path to a page file (JSON/YAML) under the project root; expanded at load time."
+          }
+        ]
+      }
     }
   },
   "$defs": {
@@ -95,7 +104,17 @@
         "id": { "type": "string", "minLength": 1 },
         "type": { "const": "text" },
         "bounds": { "$ref": "#/$defs/bounds" },
-        "text": { "type": "string" },
+        "text": {
+          "oneOf": [
+            { "type": "string" },
+            {
+              "type": "array",
+              "minItems": 1,
+              "items": { "$ref": "#/$defs/textRun" },
+              "description": "Rich text runs for mixed styles within one box"
+            }
+          ]
+        },
         "fontSize": { "type": "number", "exclusiveMinimum": 0 },
         "fontFamily": { "type": "string" },
         "color": { "$ref": "#/$defs/color" },
@@ -108,6 +127,19 @@
           "type": "string",
           "enum": ["top", "middle", "bottom"]
         }
+      }
+    },
+    "textRun": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["text"],
+      "properties": {
+        "text": { "type": "string" },
+        "fontSize": { "type": "number", "exclusiveMinimum": 0 },
+        "fontFamily": { "type": "string" },
+        "color": { "$ref": "#/$defs/color" },
+        "bold": { "type": "boolean" },
+        "italic": { "type": "boolean" }
       }
     },
     "shapeElement": {

@@ -52,6 +52,8 @@ Prefer absolute paths in the final reply.
   - Charts: `type: "chart"`, `chartType` ∈ bar|line|pie|doughnut|area, `series[{name,values,labels?}]`
   - Theme colors: `"$primary"` style tokens under `theme.colors`
   - First read: `docs/AGENT.md` (then schema if needed)
+  - Multi-file: `pages: ["pages/cover.json", ...]` expanded at load
+  - Rich text: `text: [{ "text": "Hi", "bold": true, "color": "$primary" }]`
 
 ### 3. Validate then export
 

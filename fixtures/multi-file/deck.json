@@ -1,0 +1,18 @@
+{
+  "version": "openppt-1",
+  "title": "Multi-file deck",
+  "size": [960, 540],
+  "theme": {
+    "colors": {
+      "primary": "#2563EB",
+      "text": "#111827",
+      "muted": "#6B7280",
+      "background": "#FFFFFF",
+      "surface": "#F8FAFC"
+    }
+  },
+  "pages": [
+    "pages/cover.json",
+    "pages/body.json"
+  ]
+}
