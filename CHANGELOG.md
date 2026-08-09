@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.3.1 — 2026-08-09
+
+- **fix:** images default to `fit: cover` without stretch. pptxgenjs uses placement w/h as image aspect — compiler now reads natural pixel size and passes correct aspect so OOXML `srcRect` actually crops
+- schema: `fit` ∈ cover|contain|crop|fill (`fill` = legacy stretch)
+- QA: CJK-aware `TEXT_OVERFLOW_RISK` heuristic
+- Preview HTML respects image `fit`
+
 ## 1.3.0 — 2026-08-09
 
 - **import:** lossy `openppt import file.pptx -o project/` (text/shapes/images → IR)

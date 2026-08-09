@@ -98,7 +98,8 @@ export function renderPreviewHtml(deck, projectRoot) {
                         : "image/png";
               srcAttr = `data:${mime};base64,${b64}`;
             }
-            return `<img class="el image" src="${srcAttr}" alt="" style="${style}object-fit:cover;"/>`;
+            const fit = el.fit === "contain" ? "contain" : el.fit === "fill" ? "fill" : "cover";
+            return `<img class="el image" src="${srcAttr}" alt="" style="${style}object-fit:${fit};"/>`;
           }
           if (el.type === "chart") {
             return `<div class="el chart" style="${style}border:1px dashed #94a3b8;display:flex;align-items:center;justify-content:center;font:14px sans-serif;color:#64748b;background:#f8fafc;">chart: ${escapeHtml(el.chartType || "?")} ${escapeHtml(el.title || "")}</div>`;

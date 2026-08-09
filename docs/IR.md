@@ -37,7 +37,7 @@ Machine-readable schema: [`../schema/openppt-ir.schema.json`](../schema/openppt-
 |---|---|---|
 | `text` | id, bounds, text | optional fontSize (**points**), fontFamily, color, bold, align, valign |
 | `shape` | id, bounds, shape | shape ∈ rect, roundRect, ellipse; optional fill, lineColor, lineWidth |
-| `image` | id, bounds, src | **`media/...` only**; magic-byte check; ext ∈ png/jpg/jpeg/gif/webp/svg |
+| `image` | id, bounds, src | **`media/...` only**; magic-byte check; optional `fit` (default **cover**, no stretch) |
 | `chart` | id, bounds, chartType, series | chartType ∈ bar, line, pie, doughnut, area; series[{name, values, labels?}] |
 
 ## Media policy

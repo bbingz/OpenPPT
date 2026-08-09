@@ -39,3 +39,8 @@ docs/discovery/*.zip
 .grok/
 fixtures/**/out/
 templates/**/out/
+
+# Demo intermediates / extract scratch
+demos/**/.x/
+demos/**/.extract/
+demos/**/*.pdf

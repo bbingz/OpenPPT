@@ -1,0 +1,835 @@
+{
+  "version": "openppt-1",
+  "title": "新玩意 248｜少数派的编辑们最近买了啥？",
+  "size": [960, 540],
+  "theme": {
+    "colors": {
+      "primary": "#C73E3A",
+      "accent": "#1A1A1A",
+      "text": "#1A1A1A",
+      "muted": "#6B7280",
+      "background": "#FFFFFF",
+      "surface": "#F5F5F4",
+      "soft": "#FEF2F2",
+      "line": "#E5E7EB",
+      "white": "#FFFFFF"
+    }
+  },
+  "pages": [
+    {
+      "id": "cover",
+      "background": { "type": "solid", "color": "$accent" },
+      "elements": [
+        {
+          "id": "cover-hero",
+          "type": "image",
+          "bounds": [420, 0, 540, 540],
+          "src": "media/cover.png"
+        },
+        {
+          "id": "cover-scrim",
+          "type": "shape",
+          "bounds": [0, 0, 480, 540],
+          "shape": "rect",
+          "fill": "$accent"
+        },
+        {
+          "id": "cover-kicker",
+          "type": "text",
+          "bounds": [40, 120, 400, 28],
+          "text": "少数派 · 编辑部的新玩意",
+          "fontSize": 14,
+          "bold": true,
+          "color": "$primary"
+        },
+        {
+          "id": "cover-title",
+          "type": "text",
+          "bounds": [40, 170, 400, 120],
+          "text": "新玩意 248\n编辑们最近买了啥？",
+          "fontSize": 32,
+          "bold": true,
+          "color": "$white"
+        },
+        {
+          "id": "cover-meta",
+          "type": "text",
+          "bounds": [40, 320, 380, 80],
+          "text": "来源 sspai.com/post/113139\n2026-08-06 · 约 9 分钟阅读\n@张奕源 Nick · @Lotta",
+          "fontSize": 13,
+          "color": "#A1A1AA"
+        },
+        {
+          "id": "cover-foot",
+          "type": "text",
+          "bounds": [40, 480, 380, 28],
+          "text": "OpenPPT 图文摘要 · 非官方转载",
+          "fontSize": 11,
+          "color": "#71717A"
+        }
+      ]
+    },
+    {
+      "id": "why",
+      "background": { "type": "solid", "color": "$surface" },
+      "elements": [
+        {
+          "id": "why-bar",
+          "type": "shape",
+          "bounds": [0, 0, 960, 6],
+          "shape": "rect",
+          "fill": "$primary"
+        },
+        {
+          "id": "why-h",
+          "type": "text",
+          "bounds": [40, 32, 880, 40],
+          "text": "栏目在聊什么？",
+          "fontSize": 26,
+          "bold": true,
+          "color": "$text"
+        },
+        {
+          "id": "why-card1",
+          "type": "shape",
+          "bounds": [40, 100, 430, 360],
+          "shape": "roundRect",
+          "fill": "$white",
+          "lineColor": "$line",
+          "lineWidth": 1
+        },
+        {
+          "id": "why-c1t",
+          "type": "text",
+          "bounds": [60, 120, 390, 32],
+          "text": "编注意图",
+          "fontSize": 16,
+          "bold": true,
+          "color": "$primary"
+        },
+        {
+          "id": "why-c1b",
+          "type": "text",
+          "bounds": [60, 165, 390, 260],
+          "text": "读者常好奇：少数派编辑平时到底「买了啥」。\n\n「编辑部的新玩意」让编辑本人谈最近在用的产品与真实体验，而不是品牌通稿。\n\n目标是还原使用场景、坑点与值不值得入手，方便读者对照自己的需求。",
+          "fontSize": 14,
+          "color": "$text"
+        },
+        {
+          "id": "why-card2",
+          "type": "shape",
+          "bounds": [490, 100, 430, 360],
+          "shape": "roundRect",
+          "fill": "$white",
+          "lineColor": "$line",
+          "lineWidth": 1
+        },
+        {
+          "id": "why-c2t",
+          "type": "text",
+          "bounds": [510, 120, 390, 32],
+          "text": "内容声明（摘要）",
+          "fontSize": 16,
+          "bold": true,
+          "color": "$primary"
+        },
+        {
+          "id": "why-c2b",
+          "type": "text",
+          "bounds": [510, 165, 390, 260],
+          "text": "• 含商务内容会标「广告」\n• 「厂商送测」= 非自费，但内容无品牌方干预\n• 编辑分享仅供参考\n• 欢迎评论区坦言同款体验（正/负面均可）\n• 遵守社区规则，文明讨论\n\n本期分享人：\n@张奕源 Nick（硬件/家居）\n@Lotta（书籍）",
+          "fontSize": 14,
+          "color": "$text"
+        }
+      ]
+    },
+    {
+      "id": "toc",
+      "background": { "type": "solid", "color": "$white" },
+      "elements": [
+        {
+          "id": "toc-h",
+          "type": "text",
+          "bounds": [40, 28, 880, 40],
+          "text": "本期 4 件 · 价格速览",
+          "fontSize": 26,
+          "bold": true,
+          "color": "$text"
+        },
+        {
+          "id": "toc-sub",
+          "type": "text",
+          "bounds": [40, 72, 880, 28],
+          "text": "从耗材平替到大件家电，再到观鸟入门书——覆盖日常与兴趣",
+          "fontSize": 13,
+          "color": "$muted"
+        },
+        {
+          "id": "t1-box",
+          "type": "shape",
+          "bounds": [40, 120, 210, 280],
+          "shape": "roundRect",
+          "fill": "$surface"
+        },
+        {
+          "id": "t1-n",
+          "type": "text",
+          "bounds": [52, 140, 180, 28],
+          "text": "01",
+          "fontSize": 20,
+          "bold": true,
+          "color": "$primary"
+        },
+        {
+          "id": "t1-t",
+          "type": "text",
+          "bounds": [52, 185, 180, 80],
+          "text": "牙小满\n徕芬刷头",
+          "fontSize": 16,
+          "bold": true,
+          "color": "$text"
+        },
+        {
+          "id": "t1-p",
+          "type": "text",
+          "bounds": [52, 290, 180, 60],
+          "text": "￥35\n四支",
+          "fontSize": 18,
+          "bold": true,
+          "color": "$primary"
+        },
+        {
+          "id": "t1-a",
+          "type": "text",
+          "bounds": [52, 360, 180, 24],
+          "text": "@Nick",
+          "fontSize": 12,
+          "color": "$muted"
+        },
+        {
+          "id": "t2-box",
+          "type": "shape",
+          "bounds": [270, 120, 210, 280],
+          "shape": "roundRect",
+          "fill": "$surface"
+        },
+        {
+          "id": "t2-n",
+          "type": "text",
+          "bounds": [282, 140, 180, 28],
+          "text": "02",
+          "fontSize": 20,
+          "bold": true,
+          "color": "$primary"
+        },
+        {
+          "id": "t2-t",
+          "type": "text",
+          "bounds": [282, 185, 180, 80],
+          "text": "CENO\n纯谷物猫砂",
+          "fontSize": 16,
+          "bold": true,
+          "color": "$text"
+        },
+        {
+          "id": "t2-p",
+          "type": "text",
+          "bounds": [282, 290, 180, 60],
+          "text": "￥110.8\n2.5kg×4",
+          "fontSize": 18,
+          "bold": true,
+          "color": "$primary"
+        },
+        {
+          "id": "t2-a",
+          "type": "text",
+          "bounds": [282, 360, 180, 24],
+          "text": "@Nick",
+          "fontSize": 12,
+          "color": "$muted"
+        },
+        {
+          "id": "t3-box",
+          "type": "shape",
+          "bounds": [500, 120, 210, 280],
+          "shape": "roundRect",
+          "fill": "$surface"
+        },
+        {
+          "id": "t3-n",
+          "type": "text",
+          "bounds": [512, 140, 180, 28],
+          "text": "03",
+          "fontSize": 20,
+          "bold": true,
+          "color": "$primary"
+        },
+        {
+          "id": "t3-t",
+          "type": "text",
+          "bounds": [512, 185, 180, 80],
+          "text": "石头 A30\nPro Combo",
+          "fontSize": 16,
+          "bold": true,
+          "color": "$text"
+        },
+        {
+          "id": "t3-p",
+          "type": "text",
+          "bounds": [512, 290, 180, 60],
+          "text": "￥2288\n洗地+吸尘",
+          "fontSize": 18,
+          "bold": true,
+          "color": "$primary"
+        },
+        {
+          "id": "t3-a",
+          "type": "text",
+          "bounds": [512, 360, 180, 24],
+          "text": "@Nick",
+          "fontSize": 12,
+          "color": "$muted"
+        },
+        {
+          "id": "t4-box",
+          "type": "shape",
+          "bounds": [730, 120, 190, 280],
+          "shape": "roundRect",
+          "fill": "$surface"
+        },
+        {
+          "id": "t4-n",
+          "type": "text",
+          "bounds": [742, 140, 160, 28],
+          "text": "04",
+          "fontSize": 20,
+          "bold": true,
+          "color": "$primary"
+        },
+        {
+          "id": "t4-t",
+          "type": "text",
+          "bounds": [742, 185, 160, 80],
+          "text": "等鸟来\n观鸟手账",
+          "fontSize": 16,
+          "bold": true,
+          "color": "$text"
+        },
+        {
+          "id": "t4-p",
+          "type": "text",
+          "bounds": [742, 290, 160, 60],
+          "text": "￥58\n礼盒",
+          "fontSize": 18,
+          "bold": true,
+          "color": "$primary"
+        },
+        {
+          "id": "t4-a",
+          "type": "text",
+          "bounds": [742, 360, 160, 24],
+          "text": "@Lotta",
+          "fontSize": 12,
+          "color": "$muted"
+        },
+        {
+          "id": "toc-note",
+          "type": "text",
+          "bounds": [40, 440, 880, 50],
+          "text": "价格为文中「参考价格」截点，实际以店铺为准。下文按原文体验重点压缩，保留作者判断与避坑。",
+          "fontSize": 12,
+          "color": "$muted"
+        }
+      ]
+    },
+    {
+      "id": "brush",
+      "background": { "type": "solid", "color": "$white" },
+      "elements": [
+        {
+          "id": "br-img",
+          "type": "image",
+          "bounds": [0, 0, 420, 540],
+          "src": "media/brush.jpg"
+        },
+        {
+          "id": "br-tag",
+          "type": "text",
+          "bounds": [460, 36, 460, 24],
+          "text": "01  ·  耗材平替  ·  @Nick",
+          "fontSize": 12,
+          "bold": true,
+          "color": "$primary"
+        },
+        {
+          "id": "br-h",
+          "type": "text",
+          "bounds": [460, 68, 460, 70],
+          "text": "牙小满徕芬电动牙刷头\n（Ultra 舒适）",
+          "fontSize": 22,
+          "bold": true,
+          "color": "$text"
+        },
+        {
+          "id": "br-price",
+          "type": "text",
+          "bounds": [460, 150, 460, 28],
+          "text": "参考价 ￥35 / 四支（官方刷头约 30+ 元/支）",
+          "fontSize": 13,
+          "color": "$muted"
+        },
+        {
+          "id": "br-l1",
+          "type": "text",
+          "bounds": [460, 200, 460, 70],
+          "text": "背景\n徕芬机身便宜好用，但刷头仍是「本体交朋友、耗材赚钱」。作者觉得官方刷头贵，于是找第三方平替。",
+          "fontSize": 13,
+          "color": "$text"
+        },
+        {
+          "id": "br-l2",
+          "type": "text",
+          "bounds": [460, 285, 460, 90],
+          "text": "体验要点\n• 刷牙「口感」与原装无明显差别\n• Ultra 舒适体积更大，含感更「饱满」\n• 刷毛磨圆率高，顺滑、无劣质毛刺感",
+          "fontSize": 13,
+          "color": "$text"
+        },
+        {
+          "id": "br-l3",
+          "type": "text",
+          "bounds": [460, 390, 460, 90],
+          "text": "怎么选 / 结论\n喜欢小刷头可看标准款与 Pro。刷头本就该常换——即便寿命略逊原装，多换几支也划算。做到「原装品质 + 便宜价格」已够好。",
+          "fontSize": 13,
+          "color": "$text"
+        }
+      ]
+    },
+    {
+      "id": "catsand",
+      "background": { "type": "solid", "color": "$white" },
+      "elements": [
+        {
+          "id": "cs-img",
+          "type": "image",
+          "bounds": [540, 0, 420, 540],
+          "src": "media/catsand.jpg"
+        },
+        {
+          "id": "cs-tag",
+          "type": "text",
+          "bounds": [40, 36, 470, 24],
+          "text": "02  ·  宠物刚需  ·  @Nick「目前最满意」",
+          "fontSize": 12,
+          "bold": true,
+          "color": "$primary"
+        },
+        {
+          "id": "cs-h",
+          "type": "text",
+          "bounds": [40, 70, 470, 50],
+          "text": "CENO 纯谷物猫砂",
+          "fontSize": 24,
+          "bold": true,
+          "color": "$text"
+        },
+        {
+          "id": "cs-price",
+          "type": "text",
+          "bounds": [40, 130, 470, 28],
+          "text": "参考价 ￥110.80 · 2.5kg × 4",
+          "fontSize": 13,
+          "color": "$muted"
+        },
+        {
+          "id": "cs-ctx",
+          "type": "text",
+          "bounds": [40, 170, 470, 70],
+          "text": "品类坐标\n矿物砂：脚感好、结块强，但易臭、带沙难清理。\n豆腐砂：不那么臭、不扬细沙，但常消耗快、结团弱。CENO 属后者，但纯谷物、工艺改良。",
+          "fontSize": 12,
+          "color": "$text"
+        },
+        {
+          "id": "cs-pts",
+          "type": "text",
+          "bounds": [40, 255, 470, 160],
+          "text": "为什么推\n1. 除臭：抑氢/硫化氢路线；日常异味可即时盖住，约一周后才明显衰减；无香精，身上是自然谷物味。\n2. 结团：整块多、碎渣少，铲屎省心，作者觉得可进豆腐砂前三。\n3. 起尘：高频横评后仍「浮尘可忽略」——对比多数一倒就呛的产品。",
+          "fontSize": 12,
+          "color": "$text"
+        },
+        {
+          "id": "cs-warn",
+          "type": "text",
+          "bounds": [40, 430, 470, 70],
+          "text": "避坑：同牌更便宜的「混合砂」掺了其他成分，若你在意「猫砂别乱掺」，请认准纯谷物款。",
+          "fontSize": 12,
+          "color": "$primary"
+        }
+      ]
+    },
+    {
+      "id": "roborock-1",
+      "background": { "type": "solid", "color": "$white" },
+      "elements": [
+        {
+          "id": "rr1-img",
+          "type": "image",
+          "bounds": [0, 0, 440, 540],
+          "src": "media/roborock.jpg"
+        },
+        {
+          "id": "rr1-tag",
+          "type": "text",
+          "bounds": [480, 32, 440, 24],
+          "text": "03  ·  大件家电  ·  @Nick",
+          "fontSize": 12,
+          "bold": true,
+          "color": "$primary"
+        },
+        {
+          "id": "rr1-h",
+          "type": "text",
+          "bounds": [480, 64, 440, 70],
+          "text": "石头 A30 Pro Combo\n洗地机",
+          "fontSize": 22,
+          "bold": true,
+          "color": "$text"
+        },
+        {
+          "id": "rr1-price",
+          "type": "text",
+          "bounds": [480, 145, 440, 28],
+          "text": "参考价 ￥2288.79 · 老机坏了后的隔代换新",
+          "fontSize": 13,
+          "color": "$muted"
+        },
+        {
+          "id": "rr1-why",
+          "type": "text",
+          "bounds": [480, 190, 440, 100],
+          "text": "选型逻辑\n大品牌里石头是作者唯一没正经用过的。A30 系列线很长（Pro / Ultra 泡沫 / Steam…还有 2.0）。Combo 居中：除洗地机外送吸尘套件，电机拆下可拼吸尘器——给老戴森留后路。",
+          "fontSize": 13,
+          "color": "$text"
+        },
+        {
+          "id": "rr1-feel",
+          "type": "text",
+          "bounds": [480, 310, 440, 90],
+          "text": "隔代感受\n「一用上哪儿哪儿都是优点」：更轻、更巧，滑行轮有助力，犄角旮旯抬机换地方不费劲。核心拖地与水渍，上一代已基本解决，本文不赘述。",
+          "fontSize": 13,
+          "color": "$text"
+        },
+        {
+          "id": "rr1-next",
+          "type": "text",
+          "bounds": [480, 430, 440, 60],
+          "text": "下一页：真正拉开差距的——固液分离与自清洁。",
+          "fontSize": 13,
+          "bold": true,
+          "color": "$primary"
+        }
+      ]
+    },
+    {
+      "id": "roborock-2",
+      "background": { "type": "solid", "color": "$surface" },
+      "elements": [
+        {
+          "id": "rr2-h",
+          "type": "text",
+          "bounds": [40, 24, 880, 36],
+          "text": "A30：真正让人愿意高频用的两点",
+          "fontSize": 22,
+          "bold": true,
+          "color": "$text"
+        },
+        {
+          "id": "rr2-img1",
+          "type": "image",
+          "bounds": [40, 80, 280, 210],
+          "src": "media/filter.jpg"
+        },
+        {
+          "id": "rr2-cap1",
+          "type": "text",
+          "bounds": [40, 300, 280, 36],
+          "text": "固体垃圾汇总在滤网区域",
+          "fontSize": 11,
+          "color": "$muted",
+          "align": "center"
+        },
+        {
+          "id": "rr2-img2",
+          "type": "image",
+          "bounds": [340, 80, 280, 210],
+          "src": "media/clean1.jpg"
+        },
+        {
+          "id": "rr2-cap2",
+          "type": "text",
+          "bounds": [340, 300, 280, 36],
+          "text": "自清洁后滚刷区域",
+          "fontSize": 11,
+          "color": "$muted",
+          "align": "center"
+        },
+        {
+          "id": "rr2-img3",
+          "type": "image",
+          "bounds": [640, 80, 280, 210],
+          "src": "media/clean2.jpg"
+        },
+        {
+          "id": "rr2-cap3",
+          "type": "text",
+          "bounds": [640, 300, 280, 36],
+          "text": "日常自清洁后仍很干净",
+          "fontSize": 11,
+          "color": "$muted",
+          "align": "center"
+        },
+        {
+          "id": "rr2-body",
+          "type": "text",
+          "bounds": [40, 350, 880, 150],
+          "text": "① 固液分离（作者最满意）\n宣传家家都有，实操差距大。旧机清污水桶要长刷连掏带冲；A30 固体挂滤网、桶里只剩脏水，冲水就能干净——而清桶才是洗地机最耗时的步骤，越省心才越愿意天天拖。\n\n② 自清洁质量：滚刷缝隙几乎无碎发/污渍残留。用一个多月、每周 1–2 次，从未额外手清，作者判断短期内仍不必。\n\n吐槽：站立/上充电台不会自动停机；下单后因 2.0 上市很快降价几百——摊到多年使用成本，倒还能接受。",
+          "fontSize": 12,
+          "color": "$text"
+        }
+      ]
+    },
+    {
+      "id": "book",
+      "background": { "type": "solid", "color": "$white" },
+      "elements": [
+        {
+          "id": "bk-img",
+          "type": "image",
+          "bounds": [40, 100, 420, 170],
+          "src": "media/book.png"
+        },
+        {
+          "id": "bk-img2",
+          "type": "image",
+          "bounds": [40, 290, 420, 140],
+          "src": "media/book-inner.png"
+        },
+        {
+          "id": "bk-tag",
+          "type": "text",
+          "bounds": [500, 36, 420, 24],
+          "text": "04  ·  阅读 / 兴趣  ·  @Lotta",
+          "fontSize": 12,
+          "bold": true,
+          "color": "$primary"
+        },
+        {
+          "id": "bk-h",
+          "type": "text",
+          "bounds": [500, 70, 420, 70],
+          "text": "《等鸟来：\n扫把的观鸟手账》",
+          "fontSize": 20,
+          "bold": true,
+          "color": "$text"
+        },
+        {
+          "id": "bk-price",
+          "type": "text",
+          "bounds": [500, 150, 420, 28],
+          "text": "参考价 ￥58 · 礼盒装",
+          "fontSize": 13,
+          "color": "$muted"
+        },
+        {
+          "id": "bk-why",
+          "type": "text",
+          "bounds": [500, 190, 420, 90],
+          "text": "为什么买\n作者早年读过扫把《在重庆》《你们仨》，信任其画风与幽默叙事；又对鸟类感兴趣，新书上架即下单。",
+          "fontSize": 13,
+          "color": "$text"
+        },
+        {
+          "id": "bk-what",
+          "type": "text",
+          "bounds": [500, 295, 420, 120],
+          "text": "它是什么\n名义「手账」、可平翻、有皮筋，但不是空白本，而是观鸟笔记整理成册：装备、科普、各地记录，甚至教「如何快速画一只鸟」。手绘 + 实拍照片，内容丰富可爱。",
+          "fontSize": 13,
+          "color": "$text"
+        },
+        {
+          "id": "bk-pit",
+          "type": "text",
+          "bounds": [500, 430, 420, 70],
+          "text": "避坑：别买成 2020 横版《在重庆等鸟来…》插画集（可拆明信片、更便宜）。礼盒常含贴纸、书挂件、胶带、明信片。",
+          "fontSize": 12,
+          "color": "$primary"
+        }
+      ]
+    },
+    {
+      "id": "compare",
+      "background": { "type": "solid", "color": "$surface" },
+      "elements": [
+        {
+          "id": "cmp-h",
+          "type": "text",
+          "bounds": [40, 24, 880, 36],
+          "text": "一句话带走",
+          "fontSize": 24,
+          "bold": true,
+          "color": "$text"
+        },
+        {
+          "id": "cmp-1",
+          "type": "shape",
+          "bounds": [40, 80, 430, 180],
+          "shape": "roundRect",
+          "fill": "$white"
+        },
+        {
+          "id": "cmp-1t",
+          "type": "text",
+          "bounds": [60, 100, 390, 140],
+          "text": "牙小满刷头\n官方刷头贵时的平替：口感接近原装，舒适款更大更顺滑，四支 35 元压力小。",
+          "fontSize": 14,
+          "color": "$text"
+        },
+        {
+          "id": "cmp-2",
+          "type": "shape",
+          "bounds": [490, 80, 430, 180],
+          "shape": "roundRect",
+          "fill": "$white"
+        },
+        {
+          "id": "cmp-2t",
+          "type": "text",
+          "bounds": [510, 100, 390, 140],
+          "text": "CENO 猫砂\n作者目前最满意：除臭、结团、不起尘三件套；认准纯谷物，别被混合砂低价带偏。",
+          "fontSize": 14,
+          "color": "$text"
+        },
+        {
+          "id": "cmp-3",
+          "type": "shape",
+          "bounds": [40, 290, 430, 180],
+          "shape": "roundRect",
+          "fill": "$white"
+        },
+        {
+          "id": "cmp-3t",
+          "type": "text",
+          "bounds": [60, 310, 390, 140],
+          "text": "A30 Pro Combo\n固液分离 + 自清洁质量决定愿不愿意高频用；Combo 预留吸尘扩展。注意自动停机缺失与价格波动。",
+          "fontSize": 14,
+          "color": "$text"
+        },
+        {
+          "id": "cmp-4",
+          "type": "shape",
+          "bounds": [490, 290, 430, 180],
+          "shape": "roundRect",
+          "fill": "$white"
+        },
+        {
+          "id": "cmp-4t",
+          "type": "text",
+          "bounds": [510, 310, 390, 140],
+          "text": "观鸟手账\n入门向「手账书」而非空白本；扫把画风粉友好选择。下单核对书名，别买成旧版明信片集。",
+          "fontSize": 14,
+          "color": "$text"
+        }
+      ]
+    },
+    {
+      "id": "prices",
+      "background": { "type": "solid", "color": "$white" },
+      "elements": [
+        {
+          "id": "pr-h",
+          "type": "text",
+          "bounds": [40, 24, 880, 36],
+          "text": "参考价格对比（元）",
+          "fontSize": 24,
+          "bold": true,
+          "color": "$text"
+        },
+        {
+          "id": "pr-note",
+          "type": "text",
+          "bounds": [40, 64, 880, 28],
+          "text": "A30 体量远大于其他三项；柱状图便于感知量级，不代表「性价比排序」。",
+          "fontSize": 12,
+          "color": "$muted"
+        },
+        {
+          "id": "pr-chart",
+          "type": "chart",
+          "bounds": [40, 110, 880, 380],
+          "chartType": "bar",
+          "title": "文中参考价",
+          "series": [
+            {
+              "name": "参考价（元）",
+              "labels": ["牙小满刷头", "CENO猫砂", "观鸟手账", "A30 Combo"],
+              "values": [35, 110.8, 58, 2288.79]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "closing",
+      "background": { "type": "solid", "color": "$accent" },
+      "elements": [
+        {
+          "id": "cl-kicker",
+          "type": "text",
+          "bounds": [60, 100, 840, 28],
+          "text": "继续看 / 参与",
+          "fontSize": 14,
+          "bold": true,
+          "color": "$primary",
+          "align": "center"
+        },
+        {
+          "id": "cl-h",
+          "type": "text",
+          "bounds": [60, 150, 840, 50],
+          "text": "原文与投稿通道",
+          "fontSize": 30,
+          "bold": true,
+          "color": "$white",
+          "align": "center"
+        },
+        {
+          "id": "cl-body",
+          "type": "text",
+          "bounds": [100, 230, 760, 120],
+          "text": "完整体验、更多配图与评论讨论见少数派原文。\n栏目开通社媒账号，有更多视频呈现。\n\n想投稿「新玩意」：Matrix 权限 + 共创计划，标题带前缀，\n≥800 字 + 2–3 张实拍，入选可获 108 元剁手红包。",
+          "fontSize": 14,
+          "color": "#D4D4D8",
+          "align": "center"
+        },
+        {
+          "id": "cl-link",
+          "type": "text",
+          "bounds": [100, 380, 760, 36],
+          "text": "sspai.com/post/113139",
+          "fontSize": 18,
+          "bold": true,
+          "color": "$primary",
+          "align": "center"
+        },
+        {
+          "id": "cl-foot",
+          "type": "text",
+          "bounds": [100, 470, 760, 32],
+          "text": "本 PPT 由 OpenPPT 生成 · 内容版权归少数派与作者 · 仅供学习摘要",
+          "fontSize": 11,
+          "color": "#71717A",
+          "align": "center"
+        }
+      ]
+    }
+  ]
+}

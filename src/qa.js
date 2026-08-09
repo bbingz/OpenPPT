@@ -49,6 +49,26 @@ export function analyzeLayout(deck) {
       const a = els[i];
       const [x, y, w, h] = a.bounds;
       covered += w * h;
+
+      // CJK-aware text capacity heuristic (rough)
+      if (a.type === "text") {
+        const raw = Array.isArray(a.text)
+          ? a.text.map((r) => r.text).join("")
+          : String(a.text ?? "");
+        const chars = raw.replace(/\s/g, "").length;
+        const fs = a.fontSize || 18;
+        // CJK ≈ full-width; latin average ~0.55em — use 0.9em as mixed default
+        const cap = Math.floor((w / (fs * 0.9)) * (h / (fs * 1.35)));
+        if (chars > 8 && cap > 0 && chars > cap * 1.25) {
+          issues.push({
+            severity: "med",
+            code: "TEXT_OVERFLOW_RISK",
+            pageId: page.id,
+            message: `Text ${a.id} may overflow (~${chars} chars vs ~${cap} capacity)`,
+            details: { chars, cap, fontSize: fs, bounds: a.bounds },
+          });
+        }
+      }
       for (let j = i + 1; j < els.length; j += 1) {
         const b = els[j];
         // Skip intentional text-over-shape of same area class loosely: only flag significant overlap

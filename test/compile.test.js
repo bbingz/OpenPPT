@@ -96,6 +96,99 @@ describe("compileToPptx (shipped)", () => {
     );
   });
 
+  it("embeds images with cover sizing (no stretch) by default", async () => {
+    const { deck, projectRoot, sourcePath } = loadDeck(
+      join(root, "fixtures/golden/deck.json"),
+    );
+    const out = join(outDir, "cover-sizing.pptx");
+    await compileToPptx(deck, out, { projectRoot, force: true, sourcePath });
+    const listing = execFileSync("unzip", ["-p", out, "ppt/slides/slide1.xml"], {
+      encoding: "utf8",
+    });
+    // cover path writes a:srcRect; golden accent is square-in-square so crop may be 0
+    assert.match(listing, /a:srcRect/);
+    assert.match(listing, /a:blip/);
+  });
+
+  it("cover-crops non-matching aspect ratios (non-zero srcRect)", async () => {
+    // 2×1 landscape PNG into a square box → must crop left/right
+    const { deflateSync } = await import("node:zlib");
+    const { writeFileSync } = await import("node:fs");
+    const proj = join(outDir, "cover-ar-fixture");
+    rmSync(proj, { recursive: true, force: true });
+    mkdirSync(join(proj, "media"), { recursive: true });
+
+    // Minimal valid 2×1 RGB PNG
+    function crc32(buf) {
+      let c = ~0;
+      for (let i = 0; i < buf.length; i += 1) {
+        c ^= buf[i];
+        for (let k = 0; k < 8; k += 1) c = c & 1 ? (0xedb88320 ^ (c >>> 1)) : c >>> 1;
+      }
+      return ~c >>> 0;
+    }
+    function chunk(type, data) {
+      const typeB = Buffer.from(type, "ascii");
+      const len = Buffer.alloc(4);
+      len.writeUInt32BE(data.length);
+      const crc = Buffer.alloc(4);
+      crc.writeUInt32BE(crc32(Buffer.concat([typeB, data])));
+      return Buffer.concat([len, typeB, data, crc]);
+    }
+    const ihdr = Buffer.alloc(13);
+    ihdr.writeUInt32BE(2, 0); // w
+    ihdr.writeUInt32BE(1, 4); // h
+    ihdr[8] = 8; // bit depth
+    ihdr[9] = 2; // RGB
+    // filter 0 + 2 pixels * 3 bytes
+    const raw = Buffer.from([0, 255, 0, 0, 0, 0, 255]);
+    const png = Buffer.concat([
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+      chunk("IHDR", ihdr),
+      chunk("IDAT", deflateSync(raw)),
+      chunk("IEND", Buffer.alloc(0)),
+    ]);
+    writeFileSync(join(proj, "media/wide.png"), png);
+    writeFileSync(
+      join(proj, "deck.json"),
+      JSON.stringify({
+        version: "openppt-1",
+        title: "cover-ar",
+        size: [200, 200],
+        pages: [
+          {
+            id: "p1",
+            elements: [
+              {
+                id: "img",
+                type: "image",
+                bounds: [0, 0, 200, 200],
+                src: "media/wide.png",
+              },
+            ],
+          },
+        ],
+      }),
+    );
+
+    const { deck, projectRoot, sourcePath } = loadDeck(join(proj, "deck.json"));
+    const out = join(outDir, "cover-ar.pptx");
+    await compileToPptx(deck, out, { projectRoot, force: true, sourcePath });
+    const xml = execFileSync("unzip", ["-p", out, "ppt/slides/slide1.xml"], {
+      encoding: "utf8",
+    });
+    assert.match(xml, /a:srcRect/);
+    const m = xml.match(/a:srcRect\s+l="(\d+)"\s+r="(\d+)"\s+t="(\d+)"\s+b="(\d+)"/);
+    assert.ok(m, "srcRect attributes present");
+    const [, l, r, t, b] = m.map(Number);
+    // 2:1 image in 1:1 box → horizontal crop, vertical 0
+    assert.ok(l > 0 && r > 0, `expected horizontal crop, got l=${l} r=${r}`);
+    assert.equal(t, 0);
+    assert.equal(b, 0);
+    // ~25% each side for 2:1 into 1:1
+    assert.ok(l > 10000 && l < 40000, `crop percentage out of range: ${l}`);
+  });
+
   it("refuses to overwrite the source deck path with --force", async () => {
     const deckPath = join(root, "fixtures/golden/deck.json");
     const { deck, projectRoot, sourcePath } = loadDeck(deckPath);

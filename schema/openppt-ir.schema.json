@@ -172,6 +172,11 @@
           "minLength": 1,
           "pattern": "^media/",
           "description": "Project-relative path under media/ only. Extension must match content (png/jpeg/gif/webp/svg). No remote URLs."
+        },
+        "fit": {
+          "type": "string",
+          "enum": ["cover", "contain", "crop", "fill"],
+          "description": "cover (default) fills bounds without stretch; contain letterboxes; fill stretches (legacy)."
         }
       }
     },

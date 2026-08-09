@@ -1,0 +1,206 @@
+{
+  "version": "openppt-1",
+  "title": "Hello OpenPPT",
+  "size": [960, 540],
+  "theme": {
+    "colors": {
+      "primary": "#2563EB",
+      "accent": "#F59E0B",
+      "text": "#0F172A",
+      "muted": "#64748B",
+      "background": "#FFFFFF",
+      "surface": "#F1F5F9"
+    }
+  },
+  "pages": [
+    {
+      "id": "cover",
+      "background": { "type": "solid", "color": "$background" },
+      "elements": [
+        {
+          "id": "cover-bar",
+          "type": "shape",
+          "bounds": [0, 0, 960, 12],
+          "shape": "rect",
+          "fill": "$primary"
+        },
+        {
+          "id": "cover-title",
+          "type": "text",
+          "bounds": [64, 160, 700, 80],
+          "text": [
+            { "text": "Hello ", "bold": true, "color": "$text" },
+            { "text": "OpenPPT", "bold": true, "color": "$primary" }
+          ],
+          "fontSize": 40,
+          "align": "left",
+          "valign": "middle"
+        },
+        {
+          "id": "cover-sub",
+          "type": "text",
+          "bounds": [64, 250, 720, 48],
+          "text": "开放 IR → 可编辑 PPTX · Bun · 无专有 WASM",
+          "fontSize": 18,
+          "color": "$muted"
+        },
+        {
+          "id": "cover-mark",
+          "type": "image",
+          "bounds": [820, 400, 80, 80],
+          "src": "media/mark.png"
+        },
+        {
+          "id": "cover-footer",
+          "type": "text",
+          "bounds": [64, 480, 600, 28],
+          "text": "Generated live · 2026-08-09",
+          "fontSize": 12,
+          "color": "$muted"
+        }
+      ]
+    },
+    {
+      "id": "agenda",
+      "background": { "type": "solid", "color": "$surface" },
+      "elements": [
+        {
+          "id": "agenda-h",
+          "type": "text",
+          "bounds": [64, 40, 800, 48],
+          "text": "这一页能做什么",
+          "fontSize": 28,
+          "bold": true,
+          "color": "$primary"
+        },
+        {
+          "id": "agenda-1",
+          "type": "text",
+          "bounds": [80, 140, 800, 40],
+          "text": "01  用 YAML/JSON 写幻灯中间层",
+          "fontSize": 20,
+          "color": "$text"
+        },
+        {
+          "id": "agenda-2",
+          "type": "text",
+          "bounds": [80, 200, 800, 40],
+          "text": "02  validate / qa / export 一条命令链",
+          "fontSize": 20,
+          "color": "$text"
+        },
+        {
+          "id": "agenda-3",
+          "type": "text",
+          "bounds": [80, 260, 800, 40],
+          "text": "03  图表、富文本、本地预览都已接上",
+          "fontSize": 20,
+          "color": "$text"
+        },
+        {
+          "id": "agenda-card",
+          "type": "shape",
+          "bounds": [64, 360, 832, 100],
+          "shape": "roundRect",
+          "fill": "$background",
+          "lineColor": "$primary",
+          "lineWidth": 1.5
+        },
+        {
+          "id": "agenda-note",
+          "type": "text",
+          "bounds": [88, 385, 780, 56],
+          "text": "交付物：deck.json + media/ + deck.pptx（PowerPoint 里可继续改字）",
+          "fontSize": 16,
+          "color": "$text",
+          "valign": "middle"
+        }
+      ]
+    },
+    {
+      "id": "metrics",
+      "background": { "type": "solid", "color": "$surface" },
+      "elements": [
+        {
+          "id": "metrics-h",
+          "type": "text",
+          "bounds": [48, 28, 860, 40],
+          "text": "示例图表 · 季度数据",
+          "fontSize": 26,
+          "bold": true,
+          "color": "$primary"
+        },
+        {
+          "id": "sales-chart",
+          "type": "chart",
+          "bounds": [48, 88, 864, 400],
+          "chartType": "bar",
+          "title": "Revenue vs Cost",
+          "series": [
+            {
+              "name": "Revenue",
+              "labels": ["Q1", "Q2", "Q3", "Q4"],
+              "values": [12, 19, 16, 24]
+            },
+            {
+              "name": "Cost",
+              "labels": ["Q1", "Q2", "Q3", "Q4"],
+              "values": [8, 10, 11, 12]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "closing",
+      "background": { "type": "solid", "color": "$background" },
+      "elements": [
+        {
+          "id": "close-bar",
+          "type": "shape",
+          "bounds": [0, 528, 960, 12],
+          "shape": "rect",
+          "fill": "$primary"
+        },
+        {
+          "id": "close-title",
+          "type": "text",
+          "bounds": [64, 180, 832, 64],
+          "text": "试生成完成",
+          "fontSize": 36,
+          "bold": true,
+          "color": "$text",
+          "align": "center",
+          "valign": "middle"
+        },
+        {
+          "id": "close-cta",
+          "type": "text",
+          "bounds": [64, 270, 832, 40],
+          "text": "github.com/bbingz/OpenPPT",
+          "fontSize": 18,
+          "color": "$primary",
+          "align": "center"
+        },
+        {
+          "id": "close-pill",
+          "type": "shape",
+          "bounds": [380, 360, 200, 48],
+          "shape": "ellipse",
+          "fill": "$accent"
+        },
+        {
+          "id": "close-pill-text",
+          "type": "text",
+          "bounds": [380, 360, 200, 48],
+          "text": "v1.3.0",
+          "fontSize": 16,
+          "bold": true,
+          "color": "$text",
+          "align": "center",
+          "valign": "middle"
+        }
+      ]
+    }
+  ]
+}
