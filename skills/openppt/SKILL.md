@@ -48,8 +48,10 @@ Prefer absolute paths in the final reply.
   - Bounds `[x,y,w,h]` in **CSS pixels**, must fit `size`
   - **`fontSize` is points**, not CSS px
   - Page ids and **element ids are unique deck-wide** (do not reuse `title` on every slide)
-  - Images: project-relative only; extensions `.png` `.jpg` `.jpeg` `.gif` `.webp` `.svg`
+  - Images: **only** `media/...`; real image bytes; extensions `.png` `.jpg` `.jpeg` `.gif` `.webp` `.svg`
+  - Charts: `type: "chart"`, `chartType` ∈ bar|line|pie|doughnut|area, `series[{name,values,labels?}]`
   - Theme colors: `"$primary"` style tokens under `theme.colors`
+  - First read: `docs/AGENT.md` (then schema if needed)
 
 ### 3. Validate then export
 

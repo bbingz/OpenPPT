@@ -124,6 +124,27 @@ function buildPresentation(deck, colors, projectRoot) {
           path: abs,
           ...box,
         });
+      } else if (el.type === "chart") {
+        const typeMap = {
+          bar: pptx.ChartType.bar,
+          line: pptx.ChartType.line,
+          pie: pptx.ChartType.pie,
+          doughnut: pptx.ChartType.doughnut,
+          area: pptx.ChartType.area,
+        };
+        const chartType = typeMap[el.chartType] || pptx.ChartType.bar;
+        const series = el.series.map((ser) => ({
+          name: ser.name,
+          labels: ser.labels || ser.values.map((_, i) => String(i + 1)),
+          values: ser.values,
+        }));
+        const chartOpts = {
+          ...box,
+          showTitle: Boolean(el.title),
+          showLegend: el.series.length > 1,
+        };
+        if (el.title) chartOpts.title = el.title;
+        slide.addChart(chartType, series, chartOpts);
       }
     }
   }

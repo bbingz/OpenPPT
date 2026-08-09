@@ -1,4 +1,4 @@
-import { readFileSync, realpathSync, statSync } from "node:fs";
+import { openSync, readSync, closeSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { isAbsolute, extname, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import Ajv2020 from "ajv/dist/2020.js";
@@ -13,6 +13,93 @@ const MEDIA_EXTENSIONS = new Set([
   ".webp",
   ".svg",
 ]);
+
+/**
+ * Require images under media/ (posix-style relative path).
+ * @param {string} src
+ */
+export function assertMediaSubtree(src) {
+  const normalized = src.replace(/\\/g, "/");
+  if (normalized === "media" || normalized.startsWith("media/")) {
+    return;
+  }
+  throw new OpenPptError(
+    ErrorCodes.MEDIA_MISSING,
+    `Image src must be under media/: ${src}`,
+    { src },
+  );
+}
+
+/**
+ * Sniff magic bytes / SVG start; returns a canonical type label or null.
+ * @param {string} absPath
+ * @returns {string | null}
+ */
+export function sniffImageType(absPath) {
+  const fd = openSync(absPath, "r");
+  try {
+    const buf = Buffer.alloc(16);
+    const n = readSync(fd, buf, 0, 16, 0);
+    if (n < 4) return null;
+    // PNG
+    if (
+      buf[0] === 0x89 &&
+      buf[1] === 0x50 &&
+      buf[2] === 0x4e &&
+      buf[3] === 0x47
+    ) {
+      return "png";
+    }
+    // JPEG
+    if (buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) {
+      return "jpeg";
+    }
+    // GIF
+    if (buf[0] === 0x47 && buf[1] === 0x49 && buf[2] === 0x46) {
+      return "gif";
+    }
+    // WEBP: RIFF....WEBP
+    if (
+      buf[0] === 0x52 &&
+      buf[1] === 0x49 &&
+      buf[2] === 0x46 &&
+      buf[3] === 0x46 &&
+      n >= 12 &&
+      buf[8] === 0x57 &&
+      buf[9] === 0x45 &&
+      buf[10] === 0x42 &&
+      buf[11] === 0x50
+    ) {
+      return "webp";
+    }
+    // SVG: text starting with optional BOM/whitespace then <svg or <?xml
+    const head = buf.subarray(0, n).toString("utf8").replace(/^\uFEFF/, "").trimStart();
+    if (head.startsWith("<svg") || head.startsWith("<?xml")) {
+      // Cheap second check for <?xml...svg
+      if (head.startsWith("<svg")) return "svg";
+      try {
+        const more = Buffer.alloc(256);
+        const m = readSync(fd, more, 0, 256, 0);
+        const text = more.subarray(0, m).toString("utf8");
+        if (/<svg[\s>]/i.test(text)) return "svg";
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  } finally {
+    closeSync(fd);
+  }
+}
+
+/**
+ * @param {string} ext with leading dot
+ * @param {string} sniffed
+ */
+function extensionMatchesSniff(ext, sniffed) {
+  if (sniffed === "jpeg") return ext === ".jpg" || ext === ".jpeg";
+  return ext === `.${sniffed}`;
+}
 
 const schemaPath = fileURLToPath(
   new URL("../schema/openppt-ir.schema.json", import.meta.url),
@@ -30,6 +117,11 @@ export function getSchemaValidator() {
   const ajv = new Ajv2020({ allErrors: true, strict: false });
   cachedValidate = ajv.compile(schema);
   return cachedValidate;
+}
+
+/** Test helper: drop cached Ajv validator after schema edits in-process. */
+export function clearSchemaValidatorCache() {
+  cachedValidate = null;
 }
 
 /**
@@ -241,15 +333,15 @@ export function validateDeck(deck, options = {}) {
               "projectRoot is required when checkMedia is true",
             );
           }
+          assertMediaSubtree(el.src);
           const ext = extname(el.src).toLowerCase();
           if (!MEDIA_EXTENSIONS.has(ext)) {
             throw new OpenPptError(
-              ErrorCodes.MEDIA_MISSING,
-              `Unsupported media type for ${ectx}: ${el.src} (allowed: ${[...MEDIA_EXTENSIONS].join(", ")})`,
+              ErrorCodes.MEDIA_TYPE,
+              `Unsupported media extension for ${ectx}: ${el.src} (allowed: ${[...MEDIA_EXTENSIONS].join(", ")})`,
               { pageId: page.id, elementId: el.id, src: el.src, ext },
             );
           }
-          // Prefer media/ subtree; still allow other in-project image paths with allowlist.
           const abs = safeProjectPath(projectRoot, el.src);
           let isFile = false;
           try {
@@ -263,6 +355,62 @@ export function validateDeck(deck, options = {}) {
               `Missing local media for ${ectx}: ${el.src}`,
               { pageId: page.id, elementId: el.id, src: el.src, resolved: abs },
             );
+          }
+          const sniffed = sniffImageType(abs);
+          if (!sniffed) {
+            throw new OpenPptError(
+              ErrorCodes.MEDIA_TYPE,
+              `Unrecognized image content for ${ectx}: ${el.src}`,
+              { pageId: page.id, elementId: el.id, src: el.src },
+            );
+          }
+          if (!extensionMatchesSniff(ext, sniffed)) {
+            throw new OpenPptError(
+              ErrorCodes.MEDIA_TYPE,
+              `Extension ${ext} does not match image content (${sniffed}) at ${ectx}: ${el.src}`,
+              { pageId: page.id, elementId: el.id, src: el.src, ext, sniffed },
+            );
+          }
+        }
+      } else if (el.type === "chart") {
+        if (!el.series || !Array.isArray(el.series) || el.series.length === 0) {
+          throw new OpenPptError(
+            ErrorCodes.SCHEMA,
+            `Chart requires non-empty series at ${ectx}`,
+            { pageId: page.id, elementId: el.id },
+          );
+        }
+        for (let si = 0; si < el.series.length; si += 1) {
+          const ser = el.series[si];
+          if (!ser || typeof ser !== "object") {
+            throw new OpenPptError(
+              ErrorCodes.SCHEMA,
+              `Invalid series at ${ectx}.series[${si}]`,
+              { pageId: page.id, elementId: el.id },
+            );
+          }
+          if (!Array.isArray(ser.values) || ser.values.length === 0) {
+            throw new OpenPptError(
+              ErrorCodes.SCHEMA,
+              `Chart series.values must be non-empty at ${ectx}.series[${si}]`,
+              { pageId: page.id, elementId: el.id },
+            );
+          }
+          if (!ser.values.every((v) => typeof v === "number" && Number.isFinite(v))) {
+            throw new OpenPptError(
+              ErrorCodes.SCHEMA,
+              `Chart series.values must be finite numbers at ${ectx}.series[${si}]`,
+              { pageId: page.id, elementId: el.id },
+            );
+          }
+          if (ser.labels !== undefined) {
+            if (!Array.isArray(ser.labels) || ser.labels.length !== ser.values.length) {
+              throw new OpenPptError(
+                ErrorCodes.SCHEMA,
+                `Chart series.labels length must match values at ${ectx}.series[${si}]`,
+                { pageId: page.id, elementId: el.id },
+              );
+            }
           }
         }
       }

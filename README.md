@@ -6,7 +6,7 @@ OpenPPT fills the open-source gap left by proprietary “YAML deck + closed WASM
 
 | | |
 |---|---|
-| **Version** | **1.0.2** |
+| **Version** | **1.1.0** |
 | **License** | Apache-2.0 (see `LICENSE` + `NOTICE`) |
 | **Runtime** | **Bun** ≥ 1.1 (preferred; scripts and shebang use Bun) |
 | **Default exporter** | [pptxgenjs](https://github.com/gitbrent/PptxGenJS) (MIT) |
@@ -50,16 +50,19 @@ Installs `openppt` under `~/.agents/skills` (and `~/.claude` / `~/.codex` / `~/.
 - **Version marker:** `"version": "openppt-1"`
 - **Canvas:** `size: [width, height]` in CSS pixels (default fixture uses 960×540)
 - **Theme tokens:** `"$primary"` style references under `theme.colors`
-- **Elements (v1.0):** `text` · `shape` (`rect` | `roundRect` | `ellipse`) · `image` (local path only)
+- **Elements (v1.1):** `text` · `shape` · `image` · **`chart`** (`bar` \| `line` \| `pie` \| `doughnut` \| `area`)
 - **Bounds:** absolute `[x, y, width, height]` — must fit inside the canvas
 - **IDs:** page ids and element ids must each be unique **across the whole deck**
   (element ids are not scoped per page — don't reuse `title` on every slide)
-- **Media:** project-relative paths only; absolute paths, `..` escapes, and
-  symlinks leaving the project root are rejected
+- **Media:** **`media/` only**; extension + magic-byte check; no remote URLs; no symlink escape
 
 Golden fixture: [`fixtures/golden/deck.json`](fixtures/golden/deck.json) (2 pages: cover + body, text/shape/image).
 
 **Templates:** [`templates/pitch-skeleton/deck.json`](templates/pitch-skeleton/deck.json) (cover · TOC · body · final) and page fragments under [`templates/pages/`](templates/pages/). See [`templates/README.md`](templates/README.md).
+
+**Charts demo:** [`fixtures/chart-demo/deck.json`](fixtures/chart-demo/deck.json).
+
+**Agents:** start with [`docs/AGENT.md`](docs/AGENT.md).
 
 ### Minimal example
 

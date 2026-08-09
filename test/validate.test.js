@@ -148,9 +148,81 @@ describe("validateDeck (shipped)", () => {
     );
   });
 
-  it("path jail accepts an in-root media path", () => {
+  it("path jail accepts a media/ path", () => {
     const abs = safeProjectPath(join(root, "fixtures/golden"), "media/accent.png");
     assert.ok(existsSync(abs));
+  });
+
+  it("rejects image src outside media/", () => {
+    assert.throws(
+      () =>
+        validateDeck(
+          {
+            version: "openppt-1",
+            size: [960, 540],
+            pages: [
+              {
+                id: "p1",
+                elements: [
+                  {
+                    id: "img1",
+                    type: "image",
+                    bounds: [0, 0, 100, 100],
+                    src: "secrets/note.png",
+                  },
+                ],
+              },
+            ],
+          },
+          { projectRoot: join(root, "fixtures/golden"), checkMedia: true },
+        ),
+      (err) => {
+        assert.ok(err instanceof OpenPptError);
+        // schema pattern or runtime subtree — either is fail-closed
+        assert.ok(
+          err.code === ErrorCodes.MEDIA_MISSING || err.code === ErrorCodes.SCHEMA,
+        );
+        return true;
+      },
+    );
+  });
+
+  it("rejects non-image bytes under media/", () => {
+    const dir = mkdtempSync(join(tmpdir(), "openppt-media-"));
+    try {
+      mkdirSync(join(dir, "media"), { recursive: true });
+      writeFileSync(join(dir, "media/fake.png"), "not-a-real-png");
+      assert.throws(
+        () =>
+          validateDeck(
+            {
+              version: "openppt-1",
+              size: [960, 540],
+              pages: [
+                {
+                  id: "p1",
+                  elements: [
+                    {
+                      id: "img1",
+                      type: "image",
+                      bounds: [0, 0, 100, 100],
+                      src: "media/fake.png",
+                    },
+                  ],
+                },
+              ],
+            },
+            { projectRoot: dir, checkMedia: true },
+          ),
+        (err) => {
+          assert.ok(err instanceof OpenPptError);
+          assert.equal(err.code, ErrorCodes.MEDIA_TYPE);
+          return true;
+        },
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it("path jail rejects a symlink pointing outside the project root", () => {

@@ -1,0 +1,49 @@
+{
+  "version": "openppt-1",
+  "title": "OpenPPT Chart Demo",
+  "size": [960, 540],
+  "theme": {
+    "colors": {
+      "primary": "#2563EB",
+      "text": "#111827",
+      "background": "#FFFFFF",
+      "surface": "#F8FAFC"
+    }
+  },
+  "pages": [
+    {
+      "id": "chart-page",
+      "background": { "type": "solid", "color": "$surface" },
+      "elements": [
+        {
+          "id": "chart-heading",
+          "type": "text",
+          "bounds": [48, 24, 864, 40],
+          "text": "Quarterly results",
+          "fontSize": 24,
+          "bold": true,
+          "color": "$primary"
+        },
+        {
+          "id": "sales-chart",
+          "type": "chart",
+          "bounds": [48, 80, 864, 400],
+          "chartType": "bar",
+          "title": "Sales",
+          "series": [
+            {
+              "name": "Revenue",
+              "labels": ["Q1", "Q2", "Q3", "Q4"],
+              "values": [12, 18, 15, 22]
+            },
+            {
+              "name": "Cost",
+              "labels": ["Q1", "Q2", "Q3", "Q4"],
+              "values": [8, 9, 10, 11]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -3,16 +3,17 @@
 v1.0 ships the **core open IR → open PPTX compiler** gap. Remaining items from discovery and product ambition:
 
 ## P1 — correctness & product surface
-- [ ] Chart elements in IR + OOXML chart mapping
+- [x] Chart elements in IR + OOXML chart mapping (bar/line/pie/doughnut/area via pptxgenjs)
+- [x] Media policy: `media/` subtree + magic-byte sniff
 - [ ] Multi-file decks (`deck.json` + `pages/*.page.json`)
-- [ ] Remote image policy (default deny; optional allowlist)
+- [ ] Remote image policy (default deny; optional allowlist) — remote already denied
 - [ ] Partial PPTX → IR import (lossy OK if documented)
 - [ ] Rich text spans (bold/color runs inside one box)
 
 ## P2 — agent UX
 - [x] Thin `SKILL.md` package for Claude/Codex/Cursor (`skills/openppt/`, `bun run install:skill`)
 - [x] Template skeletons (cover / TOC / body / final) bound to theme tokens (`templates/`)
-- [ ] Progressive disclosure docs (schema-first, not 2k-line prose)
+- [x] Progressive disclosure docs (`docs/AGENT.md` → schema → IR.md)
 
 ## P3 — quality & layout
 - [ ] Structured layout QA (overlap, density heuristics) without browser

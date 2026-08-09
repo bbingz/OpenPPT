@@ -1,6 +1,6 @@
 {
   "name": "openppt",
-  "version": "1.0.2",
+  "version": "1.1.0",
   "description": "Open intermediate representation (IR) and open-source compiler for editable PowerPoint (.pptx). No proprietary Kimi/neo-ppt WASM runtime. Runtime: Bun.",
   "license": "Apache-2.0",
   "type": "module",
@@ -24,12 +24,14 @@
     "LICENSE",
     "NOTICE",
     "docs/IR.md",
+    "docs/AGENT.md",
     "docs/BACKLOG.md",
     "CHANGELOG.md"
   ],
   "scripts": {
     "test": "bun test ./test/",
     "export:golden": "bun bin/openppt.js export fixtures/golden/deck.json -o fixtures/golden/out/deck.pptx --force",
+    "export:chart": "bun bin/openppt.js export fixtures/chart-demo/deck.json -o fixtures/chart-demo/out/chart.pptx --force",
     "validate:golden": "bun bin/openppt.js validate fixtures/golden/deck.json",
     "export:pitch": "bun bin/openppt.js export templates/pitch-skeleton/deck.json -o templates/pitch-skeleton/out/pitch.pptx --force",
     "install:skill": "bash scripts/install-skill.sh"
