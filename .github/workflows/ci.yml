@@ -13,16 +13,14 @@ jobs:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: canary
       - name: Install
         run: bun install --frozen-lockfile
       - name: Test
         run: bun test ./test/
-      - name: Export golden + chart + multi-file
+      - name: Export smoke
         run: |
           bun bin/openppt.js export fixtures/golden/deck.json -o /tmp/golden.pptx --force
           bun bin/openppt.js export fixtures/chart-demo/deck.json -o /tmp/chart.pptx --force
           bun bin/openppt.js export fixtures/multi-file/deck.json -o /tmp/multi.pptx --force
-          test -s /tmp/golden.pptx
-          test -s /tmp/chart.pptx
-          test -s /tmp/multi.pptx
+          test -s /tmp/golden.pptx && test -s /tmp/chart.pptx && test -s /tmp/multi.pptx
