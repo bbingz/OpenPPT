@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.3.0 — 2026-08-09
+
+- **import:** lossy `openppt import file.pptx -o project/` (text/shapes/images → IR)
+- **qa:** structural layout analysis (`openppt qa`) — overlaps, density, empty pages
+- **preview:** offline HTML preview (`openppt preview -o out.html`)
+- Theme pack: `themes/dark.json`
+- Dependency: direct `jszip` for import
+
 ## 1.2.1 — 2026-08-09
 
 - GitHub Actions CI (`bun test` + export smoke on Ubuntu)

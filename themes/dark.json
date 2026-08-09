@@ -1,0 +1,12 @@
+{
+  "id": "dark",
+  "name": "OpenPPT Dark",
+  "colors": {
+    "primary": "#60A5FA",
+    "accent": "#FBBF24",
+    "text": "#F8FAFC",
+    "muted": "#94A3B8",
+    "background": "#0F172A",
+    "surface": "#1E293B"
+  }
+}

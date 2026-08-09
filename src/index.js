@@ -1,17 +1,23 @@
 /**
- * OpenPPT public API — open IR load/validate/compile.
+ * OpenPPT public API — open IR load/validate/compile/import/qa/preview.
  * Default export path uses pptxgenjs only (no Kimi/neo-ppt WASM).
  */
 
-export { loadDeck } from "./load.js";
+export { loadDeck, expandExternalPages } from "./load.js";
 export {
   validateDeck,
   getSchemaValidator,
   getSchemaPath,
   resolveColor,
   safeProjectPath,
+  assertMediaSubtree,
+  sniffImageType,
+  clearSchemaValidatorCache,
 } from "./validate.js";
 export { compileToPptx, compileToBuffer } from "./compile.js";
+export { importPptx } from "./import-pptx.js";
+export { analyzeLayout, qaDeck } from "./qa.js";
+export { renderPreviewHtml, writePreviewHtml } from "./preview.js";
 export { OpenPptError, ErrorCodes } from "./errors.js";
 
 /**

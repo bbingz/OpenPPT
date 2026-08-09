@@ -6,7 +6,7 @@ OpenPPT fills the open-source gap left by proprietary “YAML deck + closed WASM
 
 | | |
 |---|---|
-| **Version** | **1.2.1** |
+| **Version** | **1.3.0** |
 | **License** | Apache-2.0 (see `LICENSE` + `NOTICE`) |
 | **Runtime** | **Bun** ≥ 1.1 (preferred; scripts and shebang use Bun) |
 | **Default exporter** | [pptxgenjs](https://github.com/gitbrent/PptxGenJS) (MIT) |
@@ -26,6 +26,15 @@ bun bin/openppt.js validate fixtures/golden/deck.json
 
 # export editable PPTX
 bun bin/openppt.js export fixtures/golden/deck.json -o out/deck.pptx --force
+
+# lossy import PPTX → IR project
+bun bin/openppt.js import out/deck.pptx -o recovered/ --force
+
+# structural layout QA (JSON report)
+bun bin/openppt.js qa fixtures/golden/deck.json
+
+# offline HTML preview
+bun bin/openppt.js preview fixtures/golden/deck.json -o out/preview.html
 
 # pitch skeleton (cover + TOC + body + final)
 bun bin/openppt.js export templates/pitch-skeleton/deck.json -o out/pitch.pptx --force

@@ -1,0 +1,112 @@
+/**
+ * Structural layout QA (no browser): overlaps, density, empty pages.
+ */
+
+import { validateDeck } from "./validate.js";
+
+/**
+ * Axis-aligned rectangle intersection area.
+ * @param {number[]} a [x,y,w,h]
+ * @param {number[]} b
+ */
+function overlapArea(a, b) {
+  const [ax, ay, aw, ah] = a;
+  const [bx, by, bw, bh] = b;
+  const x1 = Math.max(ax, bx);
+  const y1 = Math.max(ay, by);
+  const x2 = Math.min(ax + aw, bx + bw);
+  const y2 = Math.min(ay + ah, by + bh);
+  const w = x2 - x1;
+  const h = y2 - y1;
+  if (w <= 0 || h <= 0) return 0;
+  return w * h;
+}
+
+/**
+ * @param {object} deck validated deck
+ * @returns {{ ok: boolean, issues: Array<{ severity: string, code: string, pageId: string, message: string, details?: object }> }}
+ */
+export function analyzeLayout(deck) {
+  /** @type {Array<{ severity: string, code: string, pageId: string, message: string, details?: object }>} */
+  const issues = [];
+  const [cw, ch] = deck.size;
+  const canvasArea = cw * ch;
+
+  for (const page of deck.pages) {
+    const els = page.elements || [];
+    if (els.length === 0) {
+      issues.push({
+        severity: "med",
+        code: "EMPTY_PAGE",
+        pageId: page.id,
+        message: `Page ${page.id} has no elements`,
+      });
+      continue;
+    }
+
+    let covered = 0;
+    for (let i = 0; i < els.length; i += 1) {
+      const a = els[i];
+      const [x, y, w, h] = a.bounds;
+      covered += w * h;
+      for (let j = i + 1; j < els.length; j += 1) {
+        const b = els[j];
+        // Skip intentional text-over-shape of same area class loosely: only flag significant overlap
+        const area = overlapArea(a.bounds, b.bounds);
+        if (area <= 0) continue;
+        const minArea = Math.min(a.bounds[2] * a.bounds[3], b.bounds[2] * b.bounds[3]);
+        const ratio = minArea > 0 ? area / minArea : 0;
+        // Text on shape is common (label on ellipse) — only high severity when both text or both shapes with >30%
+        const bothText = a.type === "text" && b.type === "text";
+        const bothShape = a.type === "shape" && b.type === "shape";
+        if (ratio >= 0.3 && (bothText || bothShape)) {
+          issues.push({
+            severity: bothText ? "high" : "med",
+            code: "OVERLAP",
+            pageId: page.id,
+            message: `Elements ${a.id} and ${b.id} overlap (~${Math.round(ratio * 100)}% of smaller)`,
+            details: { a: a.id, b: b.id, ratio },
+          });
+        } else if (ratio >= 0.85 && a.type !== b.type) {
+          // nearly full cover text-on-shape is OK; ignore
+        }
+      }
+    }
+
+    const density = covered / canvasArea;
+    if (density > 1.6) {
+      issues.push({
+        severity: "med",
+        code: "HIGH_DENSITY",
+        pageId: page.id,
+        message: `Page ${page.id} element area sum is ${density.toFixed(2)}× canvas (heavy stacking/overlap)`,
+        details: { density },
+      });
+    }
+    if (density < 0.02 && els.length > 0) {
+      issues.push({
+        severity: "low",
+        code: "SPARSE_PAGE",
+        pageId: page.id,
+        message: `Page ${page.id} looks very sparse (coverage ${density.toFixed(3)})`,
+        details: { density },
+      });
+    }
+  }
+
+  const ok = !issues.some((i) => i.severity === "high" || i.severity === "critical");
+  return { ok, issues };
+}
+
+/**
+ * Validate + layout QA.
+ * @param {object} deck
+ * @param {{ projectRoot?: string, checkMedia?: boolean }} [options]
+ */
+export function qaDeck(deck, options = {}) {
+  validateDeck(deck, {
+    projectRoot: options.projectRoot,
+    checkMedia: options.checkMedia !== false,
+  });
+  return analyzeLayout(deck);
+}

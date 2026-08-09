@@ -9,6 +9,9 @@ Progressive disclosure: start here → schema → IR.md only when stuck.
 bun install
 bun bin/openppt.js validate path/to/deck.json
 bun bin/openppt.js export  path/to/deck.json -o path/to/deck.pptx --force
+bun bin/openppt.js qa      path/to/deck.json
+bun bin/openppt.js preview path/to/deck.json -o path/to/preview.html
+bun bin/openppt.js import  path/to/file.pptx -o path/to/project/ --force
 ```
 
 Runtime is **Bun**. Do not use Node as the default path.

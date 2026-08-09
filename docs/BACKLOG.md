@@ -8,7 +8,7 @@ v1.0 ships the **core open IR → open PPTX compiler** gap. Remaining items from
 - [x] Multi-file decks (`pages: ["pages/cover.json", ...]`)
 - [x] Rich text runs on `text` elements
 - [ ] Remote image policy (default deny; optional allowlist) — remote already denied
-- [ ] Partial PPTX → IR import (lossy OK if documented)
+- [x] Partial PPTX → IR import (lossy) — `openppt import`
 
 ## P2 — agent UX
 - [x] Thin `SKILL.md` package for Claude/Codex/Cursor (`skills/openppt/`, `bun run install:skill`)
@@ -18,10 +18,11 @@ v1.0 ships the **core open IR → open PPTX compiler** gap. Remaining items from
 ## P3 — quality & layout
 - [x] GitHub Actions CI (Bun test + export smoke)
 - [x] `#RRGGBBAA` alpha → pptxgenjs transparency (text/shape fill)
-- [ ] Structured layout QA (overlap, density heuristics) without browser
-- [ ] Optional preview HTML renderer for the same IR
-- [ ] Additional original theme packs (Apache-2.0 only)
-- [ ] Partial PPTX → IR import (lossy OK if documented)
+- [x] Structured layout QA (`openppt qa`) — overlap / density / empty page
+- [x] Offline HTML preview (`openppt preview`)
+- [x] Additional theme pack (`themes/dark.json`)
+- [ ] Import charts/tables from PPTX
+- [ ] Pixel-faithful preview / browser editor
 
 ## Explicitly out of product runtime
 - Kimi / Moonshot branding

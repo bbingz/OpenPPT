@@ -55,21 +55,24 @@ Prefer absolute paths in the final reply.
   - Multi-file: `pages: ["pages/cover.json", ...]` expanded at load
   - Rich text: `text: [{ "text": "Hi", "bold": true, "color": "$primary" }]`
 
-### 3. Validate then export
+### 3. Validate, QA, export, preview
 
 ```bash
 bun "$OPENPPT_ROOT/bin/openppt.js" validate /abs/path/deck.json
+bun "$OPENPPT_ROOT/bin/openppt.js" qa       /abs/path/deck.json
 bun "$OPENPPT_ROOT/bin/openppt.js" export  /abs/path/deck.json -o /abs/path/deck.pptx --force
+bun "$OPENPPT_ROOT/bin/openppt.js" preview /abs/path/deck.json -o /abs/path/preview.html
 ```
 
-If `OPENPPT_ROOT` is the current directory:
+Import existing PPTX (lossy):
 
 ```bash
-bun bin/openppt.js validate ./deck.json
-bun bin/openppt.js export ./deck.json -o ./deck.pptx --force
+bun "$OPENPPT_ROOT/bin/openppt.js" import /abs/path/in.pptx -o /abs/path/project/ --force
 ```
 
-Fix `SCHEMA_INVALID` / `BOUNDS_OUT_OF_RANGE` / `MEDIA_MISSING` / `THEME_COLOR_UNRESOLVED` before re-exporting. Fail-closed: do not hand-edit the PPTX to “paper over” IR errors.
+If `OPENPPT_ROOT` is the current directory, use `bun bin/openppt.js ...`.
+
+Fix `SCHEMA_INVALID` / `BOUNDS_OUT_OF_RANGE` / `MEDIA_MISSING` / `MEDIA_TYPE_INVALID` / `THEME_COLOR_UNRESOLVED` before re-exporting. Fail-closed: do not hand-edit the PPTX to “paper over” IR errors.
 
 ### 4. Templates (skeletons)
 
