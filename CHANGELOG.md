@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.2.1 — 2026-08-09
+
+- GitHub Actions CI (`bun test` + export smoke on Ubuntu)
+- Map `#RRGGBBAA` alpha to pptxgenjs transparency for text and shape fills
+
 ## 1.2.0 — 2026-08-09
 
 - **Multi-file decks:** `pages` may reference relative page JSON/YAML files under the project

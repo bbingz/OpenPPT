@@ -23,16 +23,31 @@ function pxToIn(px) {
 }
 
 /**
- * Strip alpha from #RRGGBBAA for pptxgenjs solid colors (expects 6 hex or name).
- * v1.0: alpha is intentionally dropped; schema still accepts 8-digit hex for
- * forward compatibility. See docs/IR.md.
+ * Convert IR color to pptxgenjs color (6 hex, no #) and optional transparency.
+ * #RRGGBBAA → color + transparency 0–100 (100 = fully transparent).
  * @param {string} hex
- * @returns {string}
+ * @returns {{ color: string, transparency?: number }}
+ */
+function toPptxColorParts(hex) {
+  if (!hex.startsWith("#")) {
+    return { color: hex };
+  }
+  if (hex.length === 9) {
+    const rgb = hex.slice(1, 7);
+    const aa = Number.parseInt(hex.slice(7, 9), 16);
+    // pptxgenjs transparency: 0 opaque … 100 fully transparent
+    const transparency = Math.round((1 - aa / 255) * 100);
+    return { color: rgb, transparency };
+  }
+  return { color: hex.slice(1) };
+}
+
+/**
+ * @param {string} hex
+ * @returns {string} 6-digit hex without #
  */
 function toPptxColor(hex) {
-  if (!hex.startsWith("#")) return hex;
-  if (hex.length === 9) return hex.slice(0, 7);
-  return hex;
+  return toPptxColorParts(hex).color;
 }
 
 /**
@@ -76,8 +91,10 @@ function buildPresentation(deck, colors, projectRoot) {
   for (const page of deck.pages) {
     const slide = pptx.addSlide();
     if (page.background?.color) {
-      const bg = toPptxColor(resolveColor(page.background.color, colors, "background"));
-      slide.background = { color: bg.replace("#", "") };
+      const bg = toPptxColorParts(
+        resolveColor(page.background.color, colors, "background"),
+      );
+      slide.background = { color: bg.color };
     }
 
     for (const el of page.elements) {
@@ -90,19 +107,22 @@ function buildPresentation(deck, colors, projectRoot) {
       };
 
       if (el.type === "text") {
-        const baseColor = el.color
-          ? toPptxColor(resolveColor(el.color, colors, el.id)).replace("#", "")
-          : "111827";
+        const base = el.color
+          ? toPptxColorParts(resolveColor(el.color, colors, el.id))
+          : { color: "111827" };
         // fontSize is IR points (pptxgenjs unit), not CSS px — see docs/IR.md
         const boxOpts = {
           ...box,
           fontSize: el.fontSize ?? 18,
           fontFace: el.fontFamily || "Arial",
-          color: baseColor,
+          color: base.color,
           bold: Boolean(el.bold),
           align: el.align || "left",
           valign: el.valign || "top",
         };
+        if (base.transparency !== undefined) {
+          boxOpts.transparency = base.transparency;
+        }
         if (Array.isArray(el.text)) {
           const runs = el.text.map((run) => {
             const options = {};
@@ -111,9 +131,13 @@ function buildPresentation(deck, colors, projectRoot) {
             if (run.fontSize !== undefined) options.fontSize = run.fontSize;
             if (run.fontFamily) options.fontFace = run.fontFamily;
             if (run.color) {
-              options.color = toPptxColor(
+              const parts = toPptxColorParts(
                 resolveColor(run.color, colors, `${el.id}.run`),
-              ).replace("#", "");
+              );
+              options.color = parts.color;
+              if (parts.transparency !== undefined) {
+                options.transparency = parts.transparency;
+              }
             }
             return { text: run.text, options };
           });
@@ -122,17 +146,21 @@ function buildPresentation(deck, colors, projectRoot) {
           slide.addText(el.text, boxOpts);
         }
       } else if (el.type === "shape") {
-        const fill = el.fill
-          ? toPptxColor(resolveColor(el.fill, colors, el.id)).replace("#", "")
-          : "2563EB";
-        const lineColor = el.lineColor
-          ? toPptxColor(resolveColor(el.lineColor, colors, el.id)).replace("#", "")
-          : fill;
+        const fillParts = el.fill
+          ? toPptxColorParts(resolveColor(el.fill, colors, el.id))
+          : { color: "2563EB" };
+        const lineParts = el.lineColor
+          ? toPptxColorParts(resolveColor(el.lineColor, colors, el.id))
+          : fillParts;
+        const fill = { color: fillParts.color };
+        if (fillParts.transparency !== undefined) {
+          fill.transparency = fillParts.transparency;
+        }
         slide.addShape(mapShape(el.shape, pptx), {
           ...box,
-          fill: { color: fill },
+          fill,
           line: {
-            color: lineColor,
+            color: lineParts.color,
             width: el.lineWidth ?? 0,
           },
         });

@@ -16,9 +16,12 @@ v1.0 ships the **core open IR → open PPTX compiler** gap. Remaining items from
 - [x] Progressive disclosure docs (`docs/AGENT.md` → schema → IR.md)
 
 ## P3 — quality & layout
+- [x] GitHub Actions CI (Bun test + export smoke)
+- [x] `#RRGGBBAA` alpha → pptxgenjs transparency (text/shape fill)
 - [ ] Structured layout QA (overlap, density heuristics) without browser
 - [ ] Optional preview HTML renderer for the same IR
 - [ ] Additional original theme packs (Apache-2.0 only)
+- [ ] Partial PPTX → IR import (lossy OK if documented)
 
 ## Explicitly out of product runtime
 - Kimi / Moonshot branding
