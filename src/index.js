@@ -16,6 +16,12 @@ export {
 } from "./validate.js";
 export { compileToPptx, compileToBuffer } from "./compile.js";
 export { importPptx } from "./import-pptx.js";
+export { initProject } from "./init.js";
+export {
+  parseOutlineMarkdown,
+  outlineToDeck,
+  projectFromOutline,
+} from "./from-outline.js";
 export {
   analyzeLayout,
   qaDeck,

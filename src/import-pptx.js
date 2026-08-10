@@ -41,12 +41,78 @@ function attr(xml, attr) {
 }
 
 /**
+ * Lossy parse of a single chart XML into IR chart fields.
+ * @param {string} chartXml
+ * @returns {{ chartType: string, title?: string, series: object[] } | null}
+ */
+function parseChartXml(chartXml) {
+  /** @type {string} */
+  let chartType = "bar";
+  if (/<c:lineChart[\s>]/.test(chartXml)) chartType = "line";
+  else if (/<c:pieChart[\s>]/.test(chartXml)) chartType = "pie";
+  else if (/<c:doughnutChart[\s>]/.test(chartXml)) chartType = "doughnut";
+  else if (/<c:areaChart[\s>]/.test(chartXml)) chartType = "area";
+  else if (/<c:barChart[\s>]/.test(chartXml)) chartType = "bar";
+  else return null;
+
+  const title = chartXml.match(
+    /<c:title[\s\S]*?<a:t>([^<]*)<\/a:t>/,
+  )?.[1];
+
+  /** @type {object[]} */
+  const series = [];
+  const serBlocks = matchAll(chartXml, /<c:ser\b[\s\S]*?<\/c:ser>/g);
+  /** @type {string[] | undefined} */
+  let sharedLabels;
+  for (let si = 0; si < serBlocks.length; si += 1) {
+    const ser = serBlocks[si][0];
+    const name =
+      ser.match(/<c:tx>[\s\S]*?<c:v>([^<]*)<\/c:v>/)?.[1] ||
+      `Series ${si + 1}`;
+    const valBlock = ser.match(
+      /<c:val>[\s\S]*?<c:numCache>([\s\S]*?)<\/c:numCache>/,
+    );
+    const values = valBlock
+      ? matchAll(valBlock[1], /<c:v>([^<]*)<\/c:v>/g)
+          .map((m) => Number(m[1]))
+          .filter((n) => Number.isFinite(n))
+      : [];
+    const catStr = ser.match(
+      /<c:cat>[\s\S]*?<c:strCache>([\s\S]*?)<\/c:strCache>/,
+    );
+    const catNum = ser.match(
+      /<c:cat>[\s\S]*?<c:numCache>([\s\S]*?)<\/c:numCache>/,
+    );
+    const catBlock = catStr || catNum;
+    if (catBlock) {
+      const labels = matchAll(catBlock[1], /<c:v>([^<]*)<\/c:v>/g).map(
+        (m) => m[1],
+      );
+      if (labels.length) sharedLabels = labels;
+    }
+    if (values.length === 0) continue;
+    /** @type {{ name: string, values: number[], labels?: string[] }} */
+    const entry = { name, values };
+    if (sharedLabels && sharedLabels.length === values.length) {
+      entry.labels = sharedLabels;
+    }
+    series.push(entry);
+  }
+  if (series.length === 0) return null;
+  /** @type {{ chartType: string, title?: string, series: object[] }} */
+  const out = { chartType, series };
+  if (title) out.title = title;
+  return out;
+}
+
+/**
  * Parse one slide XML into IR elements (lossy).
  * @param {string} slideXml
  * @param {Map<string, string>} relIdToMediaPath  rId → media/foo.png relative path
+ * @param {Map<string, string>} relIdToChartXml  rId → chart XML string
  * @param {number} pageIndex
  */
-function parseSlide(slideXml, relIdToMediaPath, pageIndex) {
+function parseSlide(slideXml, relIdToMediaPath, relIdToChartXml, pageIndex) {
   /** @type {object[]} */
   const elements = [];
   let ei = 0;
@@ -149,6 +215,68 @@ function parseSlide(slideXml, relIdToMediaPath, pageIndex) {
     });
   }
 
+  // graphicFrame: tables and charts
+  const frames = matchAll(slideXml, /<p:graphicFrame\b[\s\S]*?<\/p:graphicFrame>/g);
+  for (const m of frames) {
+    const frame = m[0];
+    const off = frame.match(/<a:off x="(-?\d+)" y="(-?\d+)"/);
+    const ext = frame.match(/<a:ext cx="(-?\d+)" cy="(-?\d+)"/);
+    if (!off || !ext) continue;
+    const bounds = [
+      emuToPx(off[1]),
+      emuToPx(off[2]),
+      Math.max(1, emuToPx(ext[1])),
+      Math.max(1, emuToPx(ext[2])),
+    ];
+
+    if (/<a:tbl[\s>]/.test(frame)) {
+      const rowXmls = matchAll(frame, /<a:tr\b[\s\S]*?<\/a:tr>/g).map((r) => r[0]);
+      if (rowXmls.length === 0) continue;
+      /** @type {string[][]} */
+      const rows = [];
+      for (const rowXml of rowXmls) {
+        const cells = matchAll(rowXml, /<a:tc\b[\s\S]*?<\/a:tc>/g).map((c) => {
+          const texts = matchAll(c[0], /<a:t>([^<]*)<\/a:t>/g).map((t) =>
+            t[1]
+              .replace(/&lt;/g, "<")
+              .replace(/&gt;/g, ">")
+              .replace(/&amp;/g, "&")
+              .replace(/&quot;/g, '"'),
+          );
+          return texts.join("").trim();
+        });
+        if (cells.length) rows.push(cells);
+      }
+      if (rows.length === 0) continue;
+      elements.push({
+        id: `p${pageIndex}-tbl${ei++}`,
+        type: "table",
+        bounds,
+        header: true,
+        rows,
+      });
+      continue;
+    }
+
+    const chartEmbed = frame.match(
+      /<c:chart[^>]*r:id="(rId\d+)"|r:id="(rId\d+)"[^>]*\/?>/,
+    );
+    const chartRid = chartEmbed?.[1] || chartEmbed?.[2];
+    if (chartRid && relIdToChartXml.has(chartRid)) {
+      const parsed = parseChartXml(relIdToChartXml.get(chartRid) || "");
+      if (parsed) {
+        elements.push({
+          id: `p${pageIndex}-ch${ei++}`,
+          type: "chart",
+          bounds,
+          chartType: parsed.chartType,
+          ...(parsed.title ? { title: parsed.title } : {}),
+          series: parsed.series,
+        });
+      }
+    }
+  }
+
   return { background, elements };
 }
 
@@ -186,7 +314,9 @@ export async function importPptx(pptxPath, outDir, options = {}) {
 
   const buf = readFileSync(absPptx);
   const zip = await JSZip.loadAsync(buf);
-  const warnings = ["import is lossy: charts/tables/groups/masters are not fully reconstructed"];
+  const warnings = [
+    "import is lossy: masters/animations/fonts not reconstructed; charts/tables are best-effort",
+  ];
 
   // Slide size from presentation.xml sldSz
   let size = [960, 540];
@@ -220,31 +350,40 @@ export async function importPptx(pptxPath, outDir, options = {}) {
     const slideXml = await readZipText(zip, slidePath);
     if (!slideXml) continue;
 
-    // Relationships for images
+    // Relationships for images + charts
     const relPath = slidePath
       .replace("ppt/slides/", "ppt/slides/_rels/")
       .replace(/\.xml$/, ".xml.rels");
     const relXml = (await readZipText(zip, relPath)) || "";
     /** @type {Map<string, string>} */
     const relIdToMedia = new Map();
+    /** @type {Map<string, string>} */
+    const relIdToChartXml = new Map();
     for (const rm of matchAll(
       relXml,
       /Id="(rId\d+)"[^>]*Target="([^"]+)"/g,
     )) {
       const rId = rm[1];
       let target = rm[2].replace(/\\/g, "/");
-      // Target is relative to ppt/slides/ e.g. ../media/image1.png
-      if (target.startsWith("../")) {
+      // Target may be package-absolute (/ppt/...), relative ../media/, or sibling
+      if (target.startsWith("/")) {
+        target = target.replace(/^\/+/, "");
+      } else if (target.startsWith("../")) {
         target = `ppt/${target.replace(/^\.\.\//, "")}`;
       } else if (!target.startsWith("ppt/")) {
         target = `ppt/slides/${target}`;
+      }
+      if (/charts\/chart\d+\.xml$/i.test(target)) {
+        const chartXml = await readZipText(zip, target);
+        if (chartXml) relIdToChartXml.set(rId, chartXml);
+        continue;
       }
       const mediaFile = zip.file(target);
       if (!mediaFile) continue;
       const ext = extname(target).toLowerCase() || ".png";
       const allowed = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"]);
       if (!allowed.has(ext)) {
-        warnings.push(`skipped media ${target} (unsupported type)`);
+        // not an image relationship (could be notes, etc.)
         continue;
       }
       const localName = `img-${++mediaIndex}${ext}`;
@@ -254,7 +393,12 @@ export async function importPptx(pptxPath, outDir, options = {}) {
       relIdToMedia.set(rId, relMedia);
     }
 
-    const { background, elements } = parseSlide(slideXml, relIdToMedia, si + 1);
+    const { background, elements } = parseSlide(
+      slideXml,
+      relIdToMedia,
+      relIdToChartXml,
+      si + 1,
+    );
     pages.push({
       id: `page-${si + 1}`,
       ...(background ? { background } : {}),

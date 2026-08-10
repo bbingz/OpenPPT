@@ -39,7 +39,10 @@ Machine-readable schema: [`../schema/openppt-ir.schema.json`](../schema/openppt-
 | `shape` | id, bounds, shape | shape ∈ rect, roundRect, ellipse; optional fill, lineColor, lineWidth |
 | `image` | id, bounds, src | **`media/...` only**; magic-byte check; optional `fit` (default **cover**, no stretch) |
 | `chart` | id, bounds, chartType, series | chartType ∈ bar, line, pie, doughnut, area; series[{name, values, labels?}] |
+| `table` | id, bounds, rows | rows of string/number or `{text, bold?, fill?, color?, align?, fontSize?}`; optional `header`, `colW`, `borderColor` |
 | `group` | id, bounds, layout, children | **Authoring only** — expanded at load to leaves (see below) |
+
+Text boxes may include optional `href` (URL) for a hyperlink on the whole box.
 
 ## Layout primitives (v1.4)
 

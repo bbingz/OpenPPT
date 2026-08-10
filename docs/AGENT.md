@@ -7,6 +7,8 @@ Progressive disclosure: start here → schema → IR.md only when stuck.
 ```bash
 # repo root
 bun install
+bun bin/openppt.js init path/to/project --theme magazine --title "My deck"
+bun bin/openppt.js from-outline outline.md -o path/to/project --theme report --force
 bun bin/openppt.js validate path/to/deck.json
 bun bin/openppt.js export  path/to/deck.json -o path/to/deck.pptx --force
 bun bin/openppt.js qa      path/to/deck.json
@@ -39,10 +41,11 @@ Optional start: copy `templates/pitch-skeleton/deck.json` and replace `{{PLACEHO
 
 ## Element types
 
-- `text` — string **or** run array `[{text, bold?, color?, fontSize?, italic?}]`
+- `text` — string **or** run array `[{text, bold?, color?, fontSize?, italic?}]`; optional `href`
 - `shape` — `rect` \| `roundRect` \| `ellipse`
 - `image` — local `media/*`
 - `chart` — `bar` \| `line` \| `pie` \| `doughnut` \| `area` + `series[{name,labels?,values}]`
+- `table` — `rows` (cells as strings or `{text, fill?, bold?}`); optional `header`, `colW`
 - `group` — **layout helper** (not drawn): `layout: stack|row|grid|layer`, `bounds`, `children` with `height`/`width`/`flex` — expanded at load (see `docs/IR.md`, `fixtures/layout-demo/`, `demos/sspai-113139/`)
 
 ## Multi-file decks

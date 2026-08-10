@@ -50,6 +50,8 @@ Prefer absolute paths in the final reply.
   - Page ids and **element ids are unique deck-wide** (do not reuse `title` on every slide)
   - Images: **only** `media/...`; real image bytes; extensions `.png` `.jpg` `.jpeg` `.gif` `.webp` `.svg`
   - Charts: `type: "chart"`, `chartType` ∈ bar|line|pie|doughnut|area, `series[{name,values,labels?}]`
+  - Tables: `type: "table"`, `rows: [["H1","H2"],["a","b"]]`, optional `header: true`, `colW`
+  - Text links: `"href": "https://..."` on text elements
   - **Layout groups (prefer for multi-block pages):** `type: "group"`, `layout: "stack"|"row"|"grid"|"layer"`, `bounds`, `gap?`, `children` with `height`/`width`/`flex` — `layer` = card overlay (bg + content). See `fixtures/layout-demo/`, `demos/sspai-113139/`, `docs/IR.md`
   - Themes to copy: `themes/default.json`, `dark.json`, `magazine.json`, `report.json`
   - Theme colors: `"$primary"` style tokens under `theme.colors`
@@ -57,7 +59,16 @@ Prefer absolute paths in the final reply.
   - Multi-file: `pages: ["pages/cover.json", ...]` expanded at load
   - Rich text: `text: [{ "text": "Hi", "bold": true, "color": "$primary" }]`
 
-### 3. Validate, QA, export, preview
+### 3. Scaffold / outline (optional)
+
+```bash
+bun "$OPENPPT_ROOT/bin/openppt.js" init /abs/path/project --theme magazine --title "Deck"
+bun "$OPENPPT_ROOT/bin/openppt.js" from-outline /abs/path/outline.md -o /abs/path/project --force
+```
+
+Outline format: `# Title`, `## Section`, `- bullet` lines.
+
+### 4. Validate, QA, export, preview
 
 ```bash
 bun "$OPENPPT_ROOT/bin/openppt.js" validate /abs/path/deck.json
@@ -77,7 +88,7 @@ If `OPENPPT_ROOT` is the current directory, use `bun bin/openppt.js ...`.
 
 Fix `SCHEMA_INVALID` / `BOUNDS_OUT_OF_RANGE` / `LAYOUT_INVALID` / `MEDIA_MISSING` / `MEDIA_TYPE_INVALID` / `THEME_COLOR_UNRESOLVED` before re-exporting. Fail-closed: do not hand-edit the PPTX to “paper over” IR errors.
 
-### 4. Templates (skeletons)
+### 5. Templates (skeletons)
 
 Copy from the repo (paths relative to OpenPPT root):
 
@@ -91,7 +102,7 @@ Copy from the repo (paths relative to OpenPPT root):
 
 Replace placeholder strings (`{{TITLE}}`, etc.) with real copy; keep bounds and `$` theme tokens unless redesigning.
 
-### 5. Delivery
+### 6. Delivery
 
 Link:
 

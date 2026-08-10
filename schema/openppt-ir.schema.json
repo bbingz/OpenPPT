@@ -90,7 +90,8 @@
               { "$ref": "#/$defs/textElement" },
               { "$ref": "#/$defs/shapeElement" },
               { "$ref": "#/$defs/imageElement" },
-              { "$ref": "#/$defs/chartElement" }
+              { "$ref": "#/$defs/chartElement" },
+              { "$ref": "#/$defs/tableElement" }
             ]
           }
         }
@@ -126,6 +127,11 @@
         "valign": {
           "type": "string",
           "enum": ["top", "middle", "bottom"]
+        },
+        "href": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Optional hyperlink URL on the text box (http(s) or mailto)"
         }
       }
     },
@@ -214,6 +220,58 @@
             }
           }
         }
+      }
+    },
+    "tableCell": {
+      "oneOf": [
+        { "type": "string" },
+        { "type": "number" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["text"],
+          "properties": {
+            "text": { "type": "string" },
+            "bold": { "type": "boolean" },
+            "align": { "type": "string", "enum": ["left", "center", "right"] },
+            "color": { "$ref": "#/$defs/color" },
+            "fill": { "$ref": "#/$defs/color" },
+            "fontSize": { "type": "number", "exclusiveMinimum": 0 }
+          }
+        }
+      ]
+    },
+    "tableElement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type", "bounds", "rows"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "type": { "const": "table" },
+        "bounds": { "$ref": "#/$defs/bounds" },
+        "rows": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "$ref": "#/$defs/tableCell" }
+          },
+          "description": "Row-major cells; strings/numbers or {text, bold?, fill?, color?, align?, fontSize?}"
+        },
+        "colW": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "number", "exclusiveMinimum": 0 },
+          "description": "Column width fractions (normalized) or absolute shares; equal if omitted"
+        },
+        "header": {
+          "type": "boolean",
+          "description": "Style first row as header (bold + primary fill) when cells are plain strings"
+        },
+        "fontSize": { "type": "number", "exclusiveMinimum": 0 },
+        "borderColor": { "$ref": "#/$defs/color" },
+        "borderWidth": { "type": "number", "minimum": 0 }
       }
     }
   }

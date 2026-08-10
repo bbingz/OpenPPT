@@ -421,6 +421,46 @@ export function validateDeck(deck, options = {}) {
             }
           }
         }
+      } else if (el.type === "table") {
+        if (!Array.isArray(el.rows) || el.rows.length === 0) {
+          throw new OpenPptError(
+            ErrorCodes.SCHEMA,
+            `Table requires non-empty rows at ${ectx}`,
+            { pageId: page.id, elementId: el.id },
+          );
+        }
+        const widths = el.rows.map((r) => (Array.isArray(r) ? r.length : 0));
+        if (widths.some((w) => w === 0)) {
+          throw new OpenPptError(
+            ErrorCodes.SCHEMA,
+            `Table rows must be non-empty arrays at ${ectx}`,
+            { pageId: page.id, elementId: el.id },
+          );
+        }
+        if (el.fontSize !== undefined && !Number.isFinite(el.fontSize)) {
+          throw new OpenPptError(
+            ErrorCodes.SCHEMA,
+            `fontSize must be finite at ${ectx}`,
+            { pageId: page.id, elementId: el.id },
+          );
+        }
+        if (el.borderColor) {
+          resolveColor(el.borderColor, colors, `${ectx}.borderColor`);
+        }
+        for (let ri = 0; ri < el.rows.length; ri += 1) {
+          const row = el.rows[ri];
+          for (let ci = 0; ci < row.length; ci += 1) {
+            const cell = row[ci];
+            if (cell && typeof cell === "object" && !Array.isArray(cell)) {
+              if (cell.color) {
+                resolveColor(cell.color, colors, `${ectx}.rows[${ri}][${ci}].color`);
+              }
+              if (cell.fill) {
+                resolveColor(cell.fill, colors, `${ectx}.rows[${ri}][${ci}].fill`);
+              }
+            }
+          }
+        }
       }
     }
   }

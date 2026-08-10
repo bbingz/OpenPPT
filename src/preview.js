@@ -104,6 +104,26 @@ export function renderPreviewHtml(deck, projectRoot) {
           if (el.type === "chart") {
             return `<div class="el chart" style="${style}border:1px dashed #94a3b8;display:flex;align-items:center;justify-content:center;font:14px sans-serif;color:#64748b;background:#f8fafc;">chart: ${escapeHtml(el.chartType || "?")} ${escapeHtml(el.title || "")}</div>`;
           }
+          if (el.type === "table") {
+            const rows = Array.isArray(el.rows) ? el.rows : [];
+            const trs = rows
+              .map((row, ri) => {
+                const cells = Array.isArray(row) ? row : [];
+                const tds = cells
+                  .map((cell) => {
+                    const text =
+                      cell && typeof cell === "object"
+                        ? String(cell.text ?? "")
+                        : String(cell ?? "");
+                    const tag = el.header && ri === 0 ? "th" : "td";
+                    return `<${tag}>${escapeHtml(text)}</${tag}>`;
+                  })
+                  .join("");
+                return `<tr>${tds}</tr>`;
+              })
+              .join("");
+            return `<div class="el table" style="${style}overflow:auto;background:#fff;"><table>${trs}</table></div>`;
+          }
           return "";
         })
         .join("\n");
@@ -130,6 +150,9 @@ export function renderPreviewHtml(deck, projectRoot) {
   .el { position:absolute; box-sizing:border-box; overflow:hidden; }
   .text { white-space:pre-wrap; line-height:1.25; }
   .image { display:block; }
+  .table table { width:100%; height:100%; border-collapse:collapse; font:12px system-ui,sans-serif; color:#111; }
+  .table th, .table td { border:1px solid #cbd5e1; padding:4px 6px; text-align:left; vertical-align:middle; }
+  .table th { background:#2563eb; color:#fff; }
   footer { padding:12px 20px 24px; font-size:12px; color:#64748b; text-align:center; }
 </style>
 </head>

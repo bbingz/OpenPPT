@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.5.0 — 2026-08-10
+
+- **table** IR element → pptxgenjs tables (header row, colW, cell styles)
+- **import:** recover tables (plain cells) and charts (series/values best-effort)
+- **init:** `openppt init <dir> [--theme] [--title] [--skeleton]`
+- **from-outline:** markdown `#` / `##` / `-` → multi-page deck with layout groups
+- **text.href** hyperlinks on text boxes
+- QA: `TIGHT_MARGIN` (low), `LOW_CONTRAST` (med)
+- Fixtures: `table-demo/`, `outline-sample.md`
+
 ## 1.4.1 — 2026-08-09
 
 - **layout:** `layout: "layer"` — all children fill the group (card = bg shape + nested stack)

@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
 /**
- * OpenPPT CLI — validate / export / import / qa / preview (Bun).
+ * OpenPPT CLI — validate / export / import / qa / preview / init (Bun).
  */
 
 import { resolve } from "node:path";
@@ -12,27 +12,39 @@ const pkg = JSON.parse(
   readFileSync(new URL("../package.json", import.meta.url), "utf8"),
 );
 
-const COMMANDS = new Set(["validate", "export", "import", "qa", "preview"]);
+const COMMANDS = new Set([
+  "validate",
+  "export",
+  "import",
+  "qa",
+  "preview",
+  "init",
+  "from-outline",
+]);
 
 function printHelp() {
   console.log(`OpenPPT v${pkg.version} — open IR → editable PPTX
 
 Usage:
-  bun bin/openppt.js validate <deck.json|yaml>
-  bun bin/openppt.js export   <deck.json|yaml> -o <out.pptx> [--force]
-  bun bin/openppt.js import   <file.pptx> -o <project-dir> [--force]
-  bun bin/openppt.js qa       <deck.json|yaml> [--fail-on low|med|high|critical]
-  bun bin/openppt.js preview  <deck.json|yaml> -o <out.html>
+  bun bin/openppt.js init         <project-dir> [--theme default|dark|magazine|report]
+                                               [--title "..."] [--skeleton] [--force]
+  bun bin/openppt.js from-outline <outline.md> -o <project-dir> [--theme ...] [--force]
+  bun bin/openppt.js validate     <deck.json|yaml>
+  bun bin/openppt.js export       <deck.json|yaml> -o <out.pptx> [--force]
+  bun bin/openppt.js import       <file.pptx> -o <project-dir> [--force]
+  bun bin/openppt.js qa           <deck.json|yaml> [--fail-on low|med|high|critical]
+  bun bin/openppt.js preview      <deck.json|yaml> -o <out.html>
   bun bin/openppt.js -h | --help
   bun bin/openppt.js -V | --version
 
 Notes:
   - Schema: schema/openppt-ir.schema.json
   - Agents: docs/AGENT.md
-  - Layout groups (stack|row|grid) expand at load before validate/export
+  - Elements: text · shape · image · chart · table · group(stack|row|grid|layer)
+  - from-outline: # title / ## section / - bullets → deck with layout groups
   - Export uses pptxgenjs only (no Kimi/neo-ppt WASM)
-  - import is lossy (text/shapes/images)
-  - qa --fail-on default: high (exit 1 if high/critical issues)
+  - import is lossy (text/shapes/images/tables)
+  - qa --fail-on default: high
   - Runtime: Bun
 `);
 }
@@ -45,6 +57,9 @@ function parseArgs(argv) {
     output: null,
     force: false,
     failOn: null,
+    theme: null,
+    title: null,
+    skeleton: false,
     help: false,
     version: false,
   };
@@ -63,21 +78,47 @@ function parseArgs(argv) {
       opts.force = true;
       continue;
     }
+    if (a === "--skeleton") {
+      opts.skeleton = true;
+      continue;
+    }
     if (a === "--fail-on") {
       const value = args.shift();
       if (!value || value.startsWith("-")) {
-        throw new Error(`--fail-on requires low|med|high|critical (got ${value ?? "nothing"})`);
+        throw new Error(
+          `--fail-on requires low|med|high|critical (got ${value ?? "nothing"})`,
+        );
       }
       if (!["low", "med", "high", "critical"].includes(value)) {
-        throw new Error(`--fail-on must be low|med|high|critical (got ${value})`);
+        throw new Error(
+          `--fail-on must be low|med|high|critical (got ${value})`,
+        );
       }
       opts.failOn = value;
+      continue;
+    }
+    if (a === "--theme") {
+      const value = args.shift();
+      if (!value || value.startsWith("-")) {
+        throw new Error(`--theme requires a name (got ${value ?? "nothing"})`);
+      }
+      opts.theme = value;
+      continue;
+    }
+    if (a === "--title") {
+      const value = args.shift();
+      if (!value || value.startsWith("-")) {
+        throw new Error(`--title requires a string (got ${value ?? "nothing"})`);
+      }
+      opts.title = value;
       continue;
     }
     if (a === "-o" || a === "--output") {
       const value = args.shift();
       if (!value || value.startsWith("-")) {
-        throw new Error(`${a} requires a path argument (got ${value ?? "nothing"})`);
+        throw new Error(
+          `${a} requires a path argument (got ${value ?? "nothing"})`,
+        );
       }
       opts.output = value;
       continue;
@@ -125,6 +166,34 @@ async function main() {
   const { OpenPptError } = await import("../src/errors.js");
 
   try {
+    if (opts.command === "init") {
+      const { initProject } = await import("../src/init.js");
+      const result = initProject(opts.input, {
+        force: opts.force,
+        theme: opts.theme || "default",
+        title: opts.title || "Untitled deck",
+        skeleton: opts.skeleton,
+      });
+      console.log(`Wrote ${result.deckPath}`);
+      console.log(`theme=${result.theme}`);
+      return;
+    }
+
+    if (opts.command === "from-outline") {
+      if (!opts.output) {
+        console.error("from-outline requires -o <project-dir>");
+        process.exit(2);
+      }
+      const { projectFromOutline } = await import("../src/from-outline.js");
+      const result = projectFromOutline(opts.input, opts.output, {
+        force: opts.force,
+        theme: opts.theme || "default",
+      });
+      console.log(`Wrote ${result.deckPath}`);
+      console.log(`pages=${result.pageCount} title=${result.title}`);
+      return;
+    }
+
     if (opts.command === "import") {
       if (!opts.output) {
         console.error("import requires -o <project-dir>");
@@ -151,7 +220,9 @@ async function main() {
       }
       validateDeck(deck, { projectRoot, checkMedia: true });
       console.log(`OK  ${sourcePath}`);
-      console.log(`    pages=${deck.pages.length} size=${JSON.stringify(deck.size)}`);
+      console.log(
+        `    pages=${deck.pages.length} size=${JSON.stringify(deck.size)}`,
+      );
       return;
     }
 
@@ -198,7 +269,9 @@ async function main() {
       console.error(`[${err.code}] ${err.message}`);
       process.exit(1);
     }
-    console.error(err instanceof Error ? err.stack || err.message : String(err));
+    console.error(
+      err instanceof Error ? err.stack || err.message : String(err),
+    );
     process.exit(1);
   }
 }

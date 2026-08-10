@@ -247,6 +247,9 @@ function buildPresentation(deck, colors, projectRoot) {
         if (base.transparency !== undefined) {
           boxOpts.transparency = base.transparency;
         }
+        if (el.href && typeof el.href === "string") {
+          boxOpts.hyperlink = { url: el.href };
+        }
         if (Array.isArray(el.text)) {
           const runs = el.text.map((run) => {
             const options = {};
@@ -341,6 +344,97 @@ function buildPresentation(deck, colors, projectRoot) {
         };
         if (el.title) chartOpts.title = el.title;
         slide.addChart(chartType, series, chartOpts);
+      } else if (el.type === "table") {
+        const borderColor = el.borderColor
+          ? toPptxColor(resolveColor(el.borderColor, colors, el.id))
+          : "CBD5E1";
+        const borderW = el.borderWidth ?? 0.5;
+        const defaultFs = el.fontSize ?? 12;
+        const colCount = Math.max(
+          ...el.rows.map((r) => (Array.isArray(r) ? r.length : 0)),
+          1,
+        );
+        /** @type {number[]} */
+        let colWIn;
+        if (Array.isArray(el.colW) && el.colW.length > 0) {
+          const sum = el.colW.reduce((a, b) => a + b, 0);
+          colWIn = el.colW.map((w) => (box.w * w) / sum);
+          // pad/truncate to colCount
+          while (colWIn.length < colCount) colWIn.push(box.w / colCount);
+          colWIn = colWIn.slice(0, colCount);
+        } else {
+          colWIn = Array.from({ length: colCount }, () => box.w / colCount);
+        }
+
+        const primaryHex = colors.primary
+          ? toPptxColor(resolveColor(colors.primary, colors, "primary"))
+          : "2563EB";
+        const textHex = colors.text
+          ? toPptxColor(resolveColor(colors.text, colors, "text"))
+          : "111827";
+
+        const tableRows = el.rows.map((row, ri) => {
+          const cells = [];
+          for (let ci = 0; ci < colCount; ci += 1) {
+            const cell = row[ci];
+            const isHeader = Boolean(el.header) && ri === 0;
+            if (cell === undefined || cell === null) {
+              cells.push({ text: "", options: { fontSize: defaultFs } });
+              continue;
+            }
+            if (typeof cell === "string" || typeof cell === "number") {
+              /** @type {Record<string, unknown>} */
+              const options = {
+                fontSize: defaultFs,
+                color: isHeader ? "FFFFFF" : textHex,
+                bold: isHeader,
+                align: "left",
+                valign: "middle",
+              };
+              if (isHeader) {
+                options.fill = { color: primaryHex };
+              }
+              cells.push({ text: String(cell), options });
+            } else {
+              const parts = cell.color
+                ? toPptxColorParts(resolveColor(cell.color, colors, el.id))
+                : { color: isHeader ? "FFFFFF" : textHex };
+              /** @type {Record<string, unknown>} */
+              const options = {
+                fontSize: cell.fontSize ?? defaultFs,
+                color: parts.color,
+                bold: cell.bold !== undefined ? Boolean(cell.bold) : isHeader,
+                align: cell.align || "left",
+                valign: "middle",
+              };
+              if (cell.fill) {
+                options.fill = {
+                  color: toPptxColor(resolveColor(cell.fill, colors, el.id)),
+                };
+              } else if (isHeader) {
+                options.fill = { color: primaryHex };
+              }
+              cells.push({ text: String(cell.text ?? ""), options });
+            }
+          }
+          return cells;
+        });
+
+        slide.addTable(tableRows, {
+          ...box,
+          colW: colWIn,
+          border: [
+            { type: "solid", pt: borderW, color: borderColor },
+            { type: "solid", pt: borderW, color: borderColor },
+            { type: "solid", pt: borderW, color: borderColor },
+            { type: "solid", pt: borderW, color: borderColor },
+          ],
+          fontFace: "Arial",
+          fontSize: defaultFs,
+          color: textHex,
+          align: "left",
+          valign: "middle",
+        });
       }
     }
   }

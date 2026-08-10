@@ -48,11 +48,39 @@ function overlapArea(a, b) {
  * @param {object} deck validated deck
  * @returns {{ ok: boolean, issues: Array<{ severity: string, code: string, pageId: string, message: string, details?: object }> }}
  */
+/**
+ * Relative luminance 0–1 for #RRGGBB / #RRGGBBAA (ignores alpha for contrast).
+ * @param {string} hex
+ */
+function luminance(hex) {
+  if (!hex || typeof hex !== "string" || !hex.startsWith("#")) return null;
+  const h = hex.slice(1);
+  if (h.length !== 6 && h.length !== 8) return null;
+  const r = Number.parseInt(h.slice(0, 2), 16) / 255;
+  const g = Number.parseInt(h.slice(2, 4), 16) / 255;
+  const b = Number.parseInt(h.slice(4, 6), 16) / 255;
+  const lin = (c) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
+  return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+}
+
+/**
+ * Resolve theme token or return hex as-is when already hex.
+ * @param {string | undefined} color
+ * @param {Record<string, string>} colors
+ */
+function resolveMaybe(color, colors) {
+  if (!color) return null;
+  if (color.startsWith("$")) return colors[color.slice(1)] || null;
+  return color;
+}
+
 export function analyzeLayout(deck) {
   /** @type {Array<{ severity: string, code: string, pageId: string, message: string, details?: object }>} */
   const issues = [];
   const [cw, ch] = deck.size;
   const canvasArea = cw * ch;
+  const colors = deck.theme?.colors || {};
+  const EDGE = 8;
 
   for (const page of deck.pages) {
     const els = page.elements || [];
@@ -66,11 +94,55 @@ export function analyzeLayout(deck) {
       continue;
     }
 
+    const pageBg =
+      resolveMaybe(page.background?.color, colors) ||
+      resolveMaybe(colors.background, colors) ||
+      "#FFFFFF";
+    const pageLum = luminance(pageBg);
+
     let covered = 0;
     for (let i = 0; i < els.length; i += 1) {
       const a = els[i];
       const [x, y, w, h] = a.bounds;
       covered += w * h;
+
+      // Edge margin: non-full-bleed elements hugging the canvas edge
+      const fullBleedX = x <= 0 && x + w >= cw - 0.5;
+      const fullBleedY = y <= 0 && y + h >= ch - 0.5;
+      if (!fullBleedX && !fullBleedY) {
+        const near =
+          x < EDGE || y < EDGE || x + w > cw - EDGE || y + h > ch - EDGE;
+        if (near && a.type !== "shape") {
+          // shapes as bars/accents often intentional at edge
+          issues.push({
+            severity: "low",
+            code: "TIGHT_MARGIN",
+            pageId: page.id,
+            message: `Element ${a.id} is within ${EDGE}px of the page edge`,
+            details: { bounds: a.bounds, edge: EDGE },
+          });
+        }
+      }
+
+      // Low contrast text vs page background (rough)
+      if (a.type === "text" && pageLum !== null) {
+        const rawColor = resolveMaybe(a.color, colors) || "#111827";
+        const textLum = luminance(rawColor);
+        if (textLum !== null) {
+          const ratio =
+            (Math.max(pageLum, textLum) + 0.05) /
+            (Math.min(pageLum, textLum) + 0.05);
+          if (ratio < 2.5) {
+            issues.push({
+              severity: "med",
+              code: "LOW_CONTRAST",
+              pageId: page.id,
+              message: `Text ${a.id} may have low contrast vs page background (≈${ratio.toFixed(1)}:1)`,
+              details: { text: rawColor, background: pageBg, ratio },
+            });
+          }
+        }
+      }
 
       // CJK-aware text capacity heuristic (rough)
       if (a.type === "text") {
