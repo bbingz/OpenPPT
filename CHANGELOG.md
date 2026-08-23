@@ -2,6 +2,7 @@
 
 ## Unreleased — 2026-08-23
 
+- Added a source-grounded SVG/PNG architecture diagram covering project creation, IR normalization, fail-closed validation, immutable media snapshots, QA, preview, and editable PPTX export.
 - The package-install integration smoke now has a 30-second per-test timeout so cold Windows dependency resolution does not inherit Bun's 5-second unit-test default.
 - CI now runs a production dependency audit that accepts only the exact two reviewed `image-size@1.2.1` advisories while their affected parsers remain unreachable from OpenPPT and the PptxGenJS runtime entrypoint.
 - The audit exception fails closed on advisory metadata, dependency range/version/integrity, lockfile path, resolved runtime entry, or executable-reference drift; a fresh-process golden export also verifies that `image-size` is not loaded.

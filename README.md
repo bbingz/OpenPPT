@@ -12,6 +12,17 @@ OpenPPT fills the open-source gap left by proprietary “YAML deck + closed WASM
 | **Default exporter** | [pptxgenjs](https://github.com/gitbrent/PptxGenJS) (MIT) |
 | **Repo** | https://github.com/bbingz/OpenPPT |
 
+## Architecture
+
+OpenPPT turns authored or imported inputs into normalized Open IR, applies a
+shared fail-closed validation boundary, and then produces structural QA, an
+offline HTML preview, or an editable OOXML PowerPoint file.
+
+[![How OpenPPT works](https://raw.githubusercontent.com/bbingz/OpenPPT/main/docs/architecture/openppt-workflow.svg)](https://github.com/bbingz/OpenPPT/blob/main/docs/architecture/openppt-workflow.svg)
+
+The same diagram is also available as a
+[1920px PNG](https://github.com/bbingz/OpenPPT/blob/main/docs/architecture/openppt-workflow.png).
+
 ## Install (local)
 
 ```bash
