@@ -1,13 +1,14 @@
 # OpenPPT backlog (post v1.5 current-state reconciliation)
 
-As of 2026-08-23, Path 1 through v1.5 is complete. Only unchecked items under **Active maintenance follow-up** count as committed active backlog. Completed release history and explicitly deferred/out-of-scope items do not.
+As of 2026-08-23, Path 1 through v1.5 and the committed maintenance follow-up are complete. Only unchecked items under **Active maintenance follow-up** count as committed active backlog. Completed release history and explicitly deferred/out-of-scope items do not.
 
-## Active maintenance follow-up (1)
+## Active maintenance follow-up (0)
 
-- [ ] Resolve or mitigate the two high `image-size@1.2.1` advisories reported through `pptxgenjs`; runtime reachability is not yet established.
+No committed active maintenance follow-up remains.
 
 ## Completed maintenance follow-up (2026-08-23)
 
+- [x] Mitigate the two high `image-size@1.2.1` advisories with a fail-closed production-audit gate that accepts them only while they remain unreachable from OpenPPT and the PptxGenJS runtime entrypoint.
 - [x] Validate and render each referenced local image from one per-operation immutable byte snapshot across PPTX export and HTML preview.
 - [x] Enforce documented ceilings for expanded-deck page/element counts, authoring groups, user-authored strings, chart/table collections, and per-file/aggregate referenced local-media bytes.
 - [x] Exercise Bun 1.4.0, stable, and canary plus stable Linux/macOS/Windows in CI, including installed-package bin shims.

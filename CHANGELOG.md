@@ -2,6 +2,10 @@
 
 ## Unreleased — 2026-08-23
 
+- CI now runs a production dependency audit that accepts only the exact two reviewed `image-size@1.2.1` advisories while their affected parsers remain unreachable from OpenPPT and the PptxGenJS runtime entrypoint.
+- The audit exception fails closed on advisory metadata, dependency range/version/integrity, lockfile path, resolved runtime entry, or executable-reference drift; a fresh-process golden export also verifies that `image-size` is not loaded.
+- This mitigation does not remove the installed transitive package or suppress downstream package-manager findings; upstream removal or a trusted patched release remains the complete resolution.
+- Local verification passed the full 99-test suite and the live production-audit gate on Bun 1.4.0 and the current 1.4.1 canary.
 - PPTX export and HTML preview now validate local images and render them from the same per-operation immutable byte snapshot, preventing output drift if project media changes while an operation is running.
 - Media file type, byte ceilings, and natural dimensions are now derived from the same bounded file-descriptor read used to create output; renderers no longer reopen project media paths after validation, and repeated same-slide references retain one package payload.
 - Local snapshot verification passed all 92 tests on Bun 1.4.0 and the current 1.4.1 canary, including deterministic path-replacement and non-blocking FIFO regressions.
@@ -20,7 +24,6 @@
 - Import now collects outputs before writing, validates generated IR and referenced extracted media, rejects non-force collisions atomically, and commits replacements with rollback backups.
 - CLI options are checked per subcommand; preview now supports explicit `--force`.
 - Package contents use an exact fixture/template whitelist, `NOTICE` includes `jszip`, and tests write generated artifacts only under temporary directories.
-- Known external constraint: `bun audit --production` still reports two high advisories in transitive `image-size@1.2.1`; no patched upstream release is currently available.
 
 ## 1.5.0 — 2026-08-10
 
