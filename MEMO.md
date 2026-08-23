@@ -4,6 +4,7 @@
 
 ### 2026-08-23
 
+- [新增] Added a source-grounded SVG/PNG architecture diagram for the OpenPPT workflow; see `README.md` and `CHANGELOG.md`.
 - [修复] The package-install integration smoke now allows 30 seconds for cold Windows dependency resolution instead of inheriting Bun's 5-second unit-test timeout.
 - [安全] Added a fail-closed production audit gate for the exact two reviewed `image-size@1.2.1` advisories; see `CHANGELOG.md` and `docs/BACKLOG.md`.
 - [验证] The gate pins advisory metadata and the dependency path, scans executable entrypoints, and proves in a fresh export process that `image-size` is not loaded; 99/99 tests and the live gate pass on Bun 1.4.0 and the current canary.
