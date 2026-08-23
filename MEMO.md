@@ -4,6 +4,7 @@
 
 ### 2026-08-23
 
+- [修复] No-clobber import now keeps every successful hard-link output when sibling-temp cleanup fails and reports the leftover as a warning; see `CHANGELOG.md`.
 - [修复] Atomic deck creation now commits at hard-link success, so temp cleanup cannot delete the installed `deck.json`; see `CHANGELOG.md`.
 - [安全] PPTX import now pins JSZip to the EOCD accepted by preflight and directly pauses its inflate helper on resource-limit aborts; see `CHANGELOG.md`.
 - [文档] README now identifies the schema as normalized leaf IR and routes group-bearing authoring IR through `loadDeck` / `validateDeck`.
@@ -11,7 +12,7 @@
 - [修复] Validation now returns typed external-page errors, always enforces canonical media paths, rejects unsafe table-width normalization, and does not mutate authored groups; downstream compile, preview, and QA use the normalized result.
 - [修复] Image path inspection shares bounded snapshot I/O, and `init` / `from-outline` use atomic no-clobber deck writes.
 - [文档] Agent guidance now uses safe alternative creation paths and documents `--skeleton`, normalized schema versus authored groups, colors-only themes, real template tokens, shipped charts, and preview limits.
-- [验证] The full 118-test suite and production dependency-audit gate pass on the current Bun 1.4.1 canary; see `CHANGELOG.md`.
+- [验证] The full 119-test suite and production dependency-audit gate pass on the current Bun 1.4.1 canary; see `CHANGELOG.md`.
 - [新增] Added a source-grounded SVG/PNG architecture diagram for the OpenPPT workflow; see `README.md` and `CHANGELOG.md`.
 - [修复] The package-install integration smoke now allows 30 seconds for cold Windows dependency resolution instead of inheriting Bun's 5-second unit-test timeout.
 - [安全] Added a fail-closed production audit gate for the exact two reviewed `image-size@1.2.1` advisories; see `CHANGELOG.md` and `docs/BACKLOG.md`.

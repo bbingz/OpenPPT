@@ -611,7 +611,6 @@ export function commitImportOutputs(dest, outputs, force, operations = {}) {
         // share a directory/filesystem. EEXIST enters the rollback path.
         linkSync(record.temp, record.target);
         record.installed = true;
-        unlinkFile(record.temp);
         continue;
       }
       if (existsSync(record.target)) {
@@ -647,6 +646,15 @@ export function commitImportOutputs(dest, outputs, force, operations = {}) {
 
   const cleanupWarnings = [];
   for (const record of records) {
+    if (!force && existsSync(record.temp)) {
+      try {
+        unlinkFile(record.temp);
+      } catch (err) {
+        cleanupWarnings.push(
+          `could not remove import temp ${record.temp}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
     if (!record.backup || !existsSync(record.backup)) continue;
     try {
       unlinkFile(record.backup);

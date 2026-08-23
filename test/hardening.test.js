@@ -373,6 +373,53 @@ describe("v1 contract hardening", () => {
     }
   });
 
+  it("keeps every no-clobber output when sibling-temp cleanup fails", () => {
+    const work = mkdtempSync(join(tmpdir(), "openppt-import-temp-warning-"));
+    try {
+      const media = join(work, "media", "asset.bin");
+      const deckPath = join(work, "deck.json");
+      let retainedTemp = null;
+
+      const warnings = commitImportOutputs(
+        work,
+        [
+          { relativePath: "media/asset.bin", data: "new media" },
+          { relativePath: "deck.json", data: "new deck" },
+        ],
+        false,
+        {
+          unlinkSync(path) {
+            if (
+              retainedTemp === null &&
+              path.includes(".openppt-import-") &&
+              path.endsWith(".tmp")
+            ) {
+              retainedTemp = path;
+              const err = new Error("injected temp cleanup failure");
+              err.code = "EPERM";
+              throw err;
+            }
+            unlinkSync(path);
+          },
+        },
+      );
+
+      assert.equal(readFileSync(media, "utf8"), "new media");
+      assert.equal(readFileSync(deckPath, "utf8"), "new deck");
+      assert.equal(warnings.length, 1);
+      assert.match(warnings[0], /could not remove import temp/);
+      assert.equal(existsSync(retainedTemp), true);
+      assert.equal(
+        [...readdirSync(work), ...readdirSync(dirname(media))].filter((name) =>
+          name.includes(".openppt-import-"),
+        ).length,
+        1,
+      );
+    } finally {
+      rmSync(work, { recursive: true, force: true });
+    }
+  });
+
   it("restores every old file when a later forced replacement fails", () => {
     const work = mkdtempSync(join(tmpdir(), "openppt-import-force-rollback-"));
     try {
