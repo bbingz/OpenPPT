@@ -25,10 +25,14 @@ describe("openppt CLI (shipped entry)", () => {
     assert.equal(out, pkg.version);
   });
 
-  it("runs directly through the shipped Bun shebang", () => {
-    const out = execFileSync(cli, ["--version"], { encoding: "utf8" }).trim();
-    assert.equal(out, pkg.version);
-  });
+  it(
+    "runs directly through the shipped Bun shebang",
+    { skip: process.platform === "win32" },
+    () => {
+      const out = execFileSync(cli, ["--version"], { encoding: "utf8" }).trim();
+      assert.equal(out, pkg.version);
+    },
+  );
 
   it("runs main() when invoked through a symlink (npm/bun link installs a symlinked bin)", () => {
     const dir = mkdtempSync(join(tmpdir(), "openppt-bin-"));

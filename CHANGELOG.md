@@ -1,7 +1,11 @@
 # Changelog
 
-## Unreleased — 2026-08-22
+## Unreleased — 2026-08-23
 
+- CI now exercises Bun 1.4.0, stable, and canary plus stable Linux/macOS/Windows; PPTX assertions no longer depend on the system `unzip` command or POSIX-only smoke checks.
+- Package tests now install the generated tarball and invoke its `openppt` bin, including the package-manager shim on Windows.
+- The supported runtime floor is now Bun 1.4, matching the checked-in lockfile v2 format and the test runner contract.
+- Local verification: `bun install --frozen-lockfile && bun test ./test/` passed 72 tests on Bun 1.4.0 and 1.4.1-canary.1; `actionlint .github/workflows/ci.yml` also passed.
 - Validation now rejects unresolved rich-text run colors, non-finite nested renderer values, non-canonical media paths, and hyperlinks outside HTTP(S)/mailto.
 - Table compilation now pads/truncates `colW` weights before normalization so the OOXML grid stays inside the declared bounds.
 - Built-in theme selection is allowlisted to `default`, `dark`, `magazine`, and `report`; skeleton titles now update the visible cover.

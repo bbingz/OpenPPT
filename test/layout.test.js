@@ -4,13 +4,14 @@ import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { execFileSync, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { loadDeck } from "../src/load.js";
 import { expandLayouts } from "../src/layout.js";
 import { validateDeck } from "../src/validate.js";
 import { compileToPptx } from "../src/compile.js";
 import { analyzeLayout, issuesFailThreshold } from "../src/qa.js";
 import { OpenPptError, ErrorCodes } from "../src/errors.js";
+import { openPptx } from "./helpers/pptx.js";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const bunBin = process.env.BUN_BIN || "bun";
@@ -234,9 +235,9 @@ describe("layout primitives (stack/row/grid)", () => {
       });
       assert.equal(result.pageCount, 3);
       assert.ok(existsSync(out));
-      const listing = execFileSync("unzip", ["-l", out], { encoding: "utf8" });
-      assert.match(listing, /slide1\.xml/);
-      assert.match(listing, /slide3\.xml/);
+      const pptx = await openPptx(out);
+      assert.ok(pptx.file("ppt/slides/slide1.xml"));
+      assert.ok(pptx.file("ppt/slides/slide3.xml"));
     } finally {
       rmSync(outDir, { recursive: true, force: true });
     }

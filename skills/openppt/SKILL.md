@@ -10,7 +10,7 @@ OpenPPT turns a **declarative deck IR** into a real, **text-editable `.pptx`** u
 ## Prerequisites
 
 ```bash
-bun --version   # need Bun >= 1.1
+bun --version   # need Bun >= 1.4
 ```
 
 If the OpenPPT repo is not on disk, clone it (or use a path the user provides):

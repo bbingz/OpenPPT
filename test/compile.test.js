@@ -1,14 +1,14 @@
 import { after, before, describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { execFileSync } from "node:child_process";
 import { loadDeck } from "../src/load.js";
 import { compileToPptx, compileToBuffer } from "../src/compile.js";
 import { exportDeckFile } from "../src/index.js";
 import { OpenPptError, ErrorCodes } from "../src/errors.js";
+import { openPptx, readPptxEntry } from "./helpers/pptx.js";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 let outDir;
@@ -31,22 +31,13 @@ describe("compileToPptx (shipped)", () => {
     assert.ok(existsSync(result.outputPath));
     assert.ok(statSync(result.outputPath).size > 1000);
 
-    // PPTX is a ZIP — list entries via system unzip
-    const listing = execFileSync("unzip", ["-l", result.outputPath], {
-      encoding: "utf8",
-    });
-    assert.match(listing, /\[Content_Types\]\.xml/);
-    assert.match(listing, /ppt\/slides\/slide1\.xml/);
-    assert.match(listing, /ppt\/slides\/slide2\.xml/);
+    const pptx = await openPptx(result.outputPath);
+    assert.ok(pptx.file("[Content_Types].xml"));
+    assert.ok(pptx.file("ppt/slides/slide1.xml"));
+    assert.ok(pptx.file("ppt/slides/slide2.xml"));
 
-    // Extract slide1 and assert fixture title text is present as editable text
-    const extractDir = join(outDir, "extract-test");
-    rmSync(extractDir, { recursive: true, force: true });
-    mkdirSync(extractDir, { recursive: true });
-    execFileSync("unzip", ["-o", result.outputPath, "ppt/slides/slide1.xml", "-d", extractDir], {
-      encoding: "utf8",
-    });
-    const slideXml = readFileSync(join(extractDir, "ppt/slides/slide1.xml"), "utf8");
+    // Read slide1 and assert fixture title text is present as editable text.
+    const slideXml = await readPptxEntry(pptx, "ppt/slides/slide1.xml");
     assert.match(slideXml, /OpenPPT Golden Fixture/);
     assert.match(slideXml, /a:t/); // drawingML text run
   });
@@ -107,9 +98,8 @@ describe("compileToPptx (shipped)", () => {
     );
     const out = join(outDir, "cover-sizing.pptx");
     await compileToPptx(deck, out, { projectRoot, force: true, sourcePath });
-    const listing = execFileSync("unzip", ["-p", out, "ppt/slides/slide1.xml"], {
-      encoding: "utf8",
-    });
+    const pptx = await openPptx(out);
+    const listing = await readPptxEntry(pptx, "ppt/slides/slide1.xml");
     // cover path writes a:srcRect; golden accent is square-in-square so crop may be 0
     assert.match(listing, /a:srcRect/);
     assert.match(listing, /a:blip/);
@@ -179,9 +169,8 @@ describe("compileToPptx (shipped)", () => {
     const { deck, projectRoot, sourcePath } = loadDeck(join(proj, "deck.json"));
     const out = join(outDir, "cover-ar.pptx");
     await compileToPptx(deck, out, { projectRoot, force: true, sourcePath });
-    const xml = execFileSync("unzip", ["-p", out, "ppt/slides/slide1.xml"], {
-      encoding: "utf8",
-    });
+    const pptx = await openPptx(out);
+    const xml = await readPptxEntry(pptx, "ppt/slides/slide1.xml");
     assert.match(xml, /a:srcRect/);
     const m = xml.match(/a:srcRect\s+l="(\d+)"\s+r="(\d+)"\s+t="(\d+)"\s+b="(\d+)"/);
     assert.ok(m, "srcRect attributes present");

@@ -3,20 +3,20 @@ import assert from "node:assert/strict";
 import {
   existsSync,
   mkdtempSync,
-  readFileSync,
   rmSync,
   statSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { execFileSync, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { loadDeck } from "../src/load.js";
 import { validateDeck } from "../src/validate.js";
 import { compileToPptx } from "../src/compile.js";
 import { importPptx } from "../src/import-pptx.js";
 import { initProject } from "../src/init.js";
 import { analyzeLayout } from "../src/qa.js";
+import { openPptx, readPptxEntry } from "./helpers/pptx.js";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const bunBin = process.env.BUN_BIN || "bun";
@@ -37,12 +37,10 @@ describe("tables + init", () => {
         sourcePath,
       });
       assert.ok(statSync(result.outputPath).size > 1000);
-      const listing = execFileSync("unzip", ["-l", out], { encoding: "utf8" });
-      assert.match(listing, /slide1\.xml/);
+      const pptx = await openPptx(out);
+      assert.ok(pptx.file("ppt/slides/slide1.xml"));
       // OOXML table marker
-      const xml = execFileSync("unzip", ["-p", out, "ppt/slides/slide1.xml"], {
-        encoding: "utf8",
-      });
+      const xml = await readPptxEntry(pptx, "ppt/slides/slide1.xml");
       assert.match(xml, /a:tbl|a:tc/);
       assert.match(xml, /OpenPPT tables|Feature|Charts/);
     } finally {

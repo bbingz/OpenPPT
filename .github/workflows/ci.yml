@@ -8,19 +8,41 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    name: test (${{ matrix.label }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: ubuntu-minimum
+            os: ubuntu-latest
+            bun: "1.4.0"
+          - label: ubuntu-stable
+            os: ubuntu-latest
+            bun: latest
+          - label: macos-stable
+            os: macos-latest
+            bun: latest
+          - label: windows-stable
+            os: windows-latest
+            bun: latest
+          - label: ubuntu-canary
+            os: ubuntu-latest
+            bun: canary
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: canary
+          bun-version: ${{ matrix.bun }}
+      - name: Runtime identity
+        run: bun --version
       - name: Install
         run: bun install --frozen-lockfile
       - name: Test
         run: bun test ./test/
       - name: Export smoke
         run: |
-          bun bin/openppt.js export fixtures/golden/deck.json -o /tmp/golden.pptx --force
-          bun bin/openppt.js export fixtures/chart-demo/deck.json -o /tmp/chart.pptx --force
-          bun bin/openppt.js export fixtures/multi-file/deck.json -o /tmp/multi.pptx --force
-          test -s /tmp/golden.pptx && test -s /tmp/chart.pptx && test -s /tmp/multi.pptx
+          bun bin/openppt.js export fixtures/golden/deck.json -o "${{ runner.temp }}/golden.pptx" --force
+          bun bin/openppt.js export fixtures/chart-demo/deck.json -o "${{ runner.temp }}/chart.pptx" --force
+          bun bin/openppt.js export fixtures/multi-file/deck.json -o "${{ runner.temp }}/multi.pptx" --force
+          bun -e "import { statSync } from 'node:fs'; for (const file of process.argv.slice(1)) { if (statSync(file).size < 1) throw new Error('empty export: ' + file); }" "${{ runner.temp }}/golden.pptx" "${{ runner.temp }}/chart.pptx" "${{ runner.temp }}/multi.pptx"
