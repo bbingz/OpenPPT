@@ -2,14 +2,14 @@
 
 As of 2026-08-23, Path 1 through v1.5 is complete. Only unchecked items under **Active maintenance follow-up** count as committed active backlog. Completed release history and explicitly deferred/out-of-scope items do not.
 
-## Active maintenance follow-up (3)
+## Active maintenance follow-up (2)
 
 - [ ] Resolve or mitigate the two high `image-size@1.2.1` advisories reported through `pptxgenjs`; runtime reachability is not yet established.
-- [ ] Define and enforce resource ceilings for deck/page/element counts, string/series sizes, and local media bytes.
 - [ ] Close or explicitly mitigate the media validation TOCTOU window between metadata/content checks and compiler reads.
 
 ## Completed maintenance follow-up (2026-08-23)
 
+- [x] Enforce documented ceilings for expanded-deck page/element counts, authoring groups, user-authored strings, chart/table collections, and per-file/aggregate referenced local-media bytes.
 - [x] Exercise Bun 1.4.0, stable, and canary plus stable Linux/macOS/Windows in CI, including installed-package bin shims.
 
 ## Completed post-v1.5 hardening (2026-08-22)

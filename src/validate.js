@@ -4,6 +4,11 @@ import { fileURLToPath } from "node:url";
 import Ajv2020 from "ajv/dist/2020.js";
 import { OpenPptError, ErrorCodes } from "./errors.js";
 import { expandLayouts, deckHasGroups } from "./layout.js";
+import {
+  assertDeckResourceLimits,
+  assertResourceLimit,
+  RESOURCE_LIMITS,
+} from "./resource-limits.js";
 
 /** Allowed image extensions for local media (lowercase, with dot). */
 const MEDIA_EXTENSIONS = new Set([
@@ -220,12 +225,14 @@ export function safeProjectPath(projectRoot, userPath) {
  */
 export function validateDeck(deck, options = {}) {
   const { projectRoot, checkMedia = true } = options;
+  assertDeckResourceLimits(deck);
   // Expand layout groups if caller passed pre-load authoring IR.
   // loadDeck already expands; expandLayouts is idempotent for leaf-only decks.
   if (deckHasGroups(deck)) {
     const expanded = expandLayouts(deck);
     deck.pages = expanded.pages;
   }
+  assertDeckResourceLimits(deck);
 
   const validate = getSchemaValidator();
   const schemaOk = validate(deck);
@@ -266,6 +273,9 @@ export function validateDeck(deck, options = {}) {
   const pageIds = new Set();
   /** @type {Set<string>} */
   const elementIds = new Set();
+  /** @type {Set<string>} */
+  const checkedMedia = new Set();
+  let totalMediaBytes = 0;
 
   // Resolve and validate colors used on pages
   for (let pi = 0; pi < deck.pages.length; pi += 1) {
@@ -371,18 +381,35 @@ export function validateDeck(deck, options = {}) {
             );
           }
           const abs = safeProjectPath(projectRoot, el.src);
-          let isFile = false;
+          let mediaStat = null;
           try {
-            isFile = statSync(abs).isFile();
+            mediaStat = statSync(abs);
           } catch {
-            isFile = false;
+            mediaStat = null;
           }
-          if (!isFile) {
+          if (!mediaStat?.isFile()) {
             throw new OpenPptError(
               ErrorCodes.MEDIA_MISSING,
               `Missing local media for ${ectx}: ${el.src}`,
               { pageId: page.id, elementId: el.id, src: el.src, resolved: abs },
             );
+          }
+          const mediaKey = realpathOrSelf(abs);
+          if (!checkedMedia.has(mediaKey)) {
+            assertResourceLimit(
+              mediaStat.size,
+              RESOURCE_LIMITS.mediaBytesPerFile,
+              "mediaBytesPerFile",
+              ectx,
+            );
+            totalMediaBytes += mediaStat.size;
+            assertResourceLimit(
+              totalMediaBytes,
+              RESOURCE_LIMITS.mediaBytesPerDeck,
+              "mediaBytesPerDeck",
+              "deck media",
+            );
+            checkedMedia.add(mediaKey);
           }
           const sniffed = sniffImageType(abs);
           if (!sniffed) {

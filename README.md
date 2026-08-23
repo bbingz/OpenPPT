@@ -73,6 +73,7 @@ Installs `openppt` under `~/.agents/skills` (and `~/.claude` / `~/.codex` / `~/.
 - **IDs:** page ids and element ids must each be unique **across the whole deck**
   (element ids are not scoped per page — don't reuse `title` on every slide)
 - **Media:** **`media/` only**; extension + magic-byte check; no remote URLs; no symlink escape
+- **Resource ceilings:** fixed page/element, string, chart/table, and referenced-media limits; see [`docs/IR.md`](docs/IR.md#resource-ceilings)
 
 Golden fixture: [`fixtures/golden/deck.json`](fixtures/golden/deck.json) (2 pages: cover + body, text/shape/image).
 
@@ -145,9 +146,11 @@ Default export **refuses** to write a PPTX when:
 | Unresolved `$token` | `THEME_COLOR_UNRESOLVED` |
 | Duplicate page `id` | `SCHEMA_INVALID` |
 | Duplicate element `id` (deck-wide) | `SCHEMA_INVALID` |
+| Documented resource ceiling exceeded | `RESOURCE_LIMIT_EXCEEDED` |
 
-The last two are enforced by `validateDeck`, not by the JSON Schema — schema
-alone cannot express cross-document uniqueness.
+Duplicate-ID rules and resource ceilings are enforced by `validateDeck`, not by
+the JSON Schema; schema alone cannot express cross-document uniqueness or the
+full runtime resource policy.
 
 ## Agent usage (thin skill)
 

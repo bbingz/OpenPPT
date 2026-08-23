@@ -11,6 +11,7 @@ import {
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { OpenPptError, ErrorCodes } from "./errors.js";
+import { validateDeck } from "./validate.js";
 
 const rootDir = join(dirname(fileURLToPath(import.meta.url)), "..");
 const THEME_IDS = new Set(["default", "dark", "magazine", "report"]);
@@ -58,19 +59,18 @@ export function initProject(outDir, options = {}) {
   }
 
   const colors = loadThemeColors(theme);
-  mkdirSync(join(dest, "media"), { recursive: true });
+  let deck;
 
   if (skeleton) {
     const src = join(rootDir, "templates/pitch-skeleton/deck.json");
-    const raw = JSON.parse(readFileSync(src, "utf8"));
-    raw.title = title;
-    raw.theme = { colors };
-    const cover = raw.pages.find((page) => page.id === "cover");
+    deck = JSON.parse(readFileSync(src, "utf8"));
+    deck.title = title;
+    deck.theme = { colors };
+    const cover = deck.pages.find((page) => page.id === "cover");
     const coverTitle = cover?.elements.find((element) => element.id === "cover-title");
     if (coverTitle) coverTitle.text = title;
-    writeFileSync(deckPath, `${JSON.stringify(raw, null, 2)}\n`, "utf8");
   } else {
-    const deck = {
+    deck = {
       version: "openppt-1",
       title,
       size: [960, 540],
@@ -138,8 +138,11 @@ export function initProject(outDir, options = {}) {
         },
       ],
     };
-    writeFileSync(deckPath, `${JSON.stringify(deck, null, 2)}\n`, "utf8");
   }
+
+  validateDeck(JSON.parse(JSON.stringify(deck)), { checkMedia: false });
+  mkdirSync(join(dest, "media"), { recursive: true });
+  writeFileSync(deckPath, `${JSON.stringify(deck, null, 2)}\n`, "utf8");
 
   // Keep media/.gitkeep so empty media is trackable if desired
   const keep = join(dest, "media", ".gitkeep");
