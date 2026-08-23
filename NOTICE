@@ -7,6 +7,7 @@ presentation representation (IR) and an open-source PPTX compiler.
 Third-party dependencies (installed via npm; see package.json):
   - pptxgenjs — MIT License — https://github.com/gitbrent/PptxGenJS
   - ajv — MIT License — https://github.com/ajv-validator/ajv
+  - jszip — MIT License — https://github.com/Stuk/jszip
   - yaml — ISC License — https://github.com/eemeli/yaml
 
 This project does NOT include, require, or redistribute:

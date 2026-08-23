@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased — 2026-08-22
+
+- Validation now rejects unresolved rich-text run colors, non-finite nested renderer values, non-canonical media paths, and hyperlinks outside HTTP(S)/mailto.
+- Table compilation now pads/truncates `colW` weights before normalization so the OOXML grid stays inside the declared bounds.
+- Built-in theme selection is allowlisted to `default`, `dark`, `magazine`, and `report`; skeleton titles now update the visible cover.
+- Outline generation paginates TOCs after seven entries, validates generated IR before writing, and fails closed on unsupported custom canvas sizes.
+- Layout expansion preserves leaf text alignment and checks authoring-group IDs before flattening.
+- Preview validates its public API inputs, refuses source/existing-file overwrite without explicit force, and writes through a sibling temporary file.
+- Import now collects outputs before writing, validates generated IR and referenced extracted media, rejects non-force collisions atomically, and commits replacements with rollback backups.
+- CLI options are checked per subcommand; preview now supports explicit `--force`.
+- Package contents use an exact fixture/template whitelist, `NOTICE` includes `jszip`, and tests write generated artifacts only under temporary directories.
+- Known external constraint: `bun audit --production` still reports two high advisories in transitive `image-size@1.2.1`; no patched upstream release is currently available.
+
 ## 1.5.0 — 2026-08-10
 
 - **table** IR element → pptxgenjs tables (header row, colW, cell styles)

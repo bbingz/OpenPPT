@@ -1,6 +1,6 @@
 /**
  * Lossy PPTX → OpenPPT IR importer.
- * Extracts text + simple shapes + images. Charts/tables/groups are skipped or approximated.
+ * Extracts text, simple shapes, images, plain tables, and best-effort charts.
  */
 
 import {
@@ -8,10 +8,19 @@ import {
   writeFileSync,
   existsSync,
   readFileSync,
+  lstatSync,
+  linkSync,
+  mkdtempSync,
+  renameSync,
+  rmSync,
+  unlinkSync,
 } from "node:fs";
+import { randomBytes } from "node:crypto";
+import { tmpdir } from "node:os";
 import { dirname, join, resolve, basename, extname } from "node:path";
 import JSZip from "jszip";
 import { OpenPptError, ErrorCodes } from "./errors.js";
+import { validateDeck } from "./validate.js";
 
 /** EMUs per CSS px at 96dpi (914400 EMU/in ÷ 96). */
 const EMU_PER_PX = 9525;
@@ -291,6 +300,139 @@ async function readZipText(zip, path) {
 }
 
 /**
+ * Commit a complete import as one rollback-safe set of file replacements.
+ * @param {string} dest
+ * @param {{ relativePath: string, data: string | Buffer }[]} outputs
+ * @param {boolean} force
+ * @param {{ renameSync?: typeof renameSync, unlinkSync?: typeof unlinkSync }} [operations]
+ * @returns {string[]} cleanup warnings
+ */
+export function commitImportOutputs(dest, outputs, force, operations = {}) {
+  const renameFile = operations.renameSync || renameSync;
+  const unlinkFile = operations.unlinkSync || unlinkSync;
+  const transaction = randomBytes(8).toString("hex");
+  const records = outputs.map((output, index) => {
+    const target = join(dest, output.relativePath);
+    return {
+      ...output,
+      target,
+      temp: join(
+        dirname(target),
+        `.openppt-import-${transaction}-${index}.tmp`,
+      ),
+      backup: null,
+      installed: false,
+    };
+  });
+
+  for (const record of records) {
+    if (
+      force &&
+      existsSync(record.target) &&
+      lstatSync(record.target).isDirectory()
+    ) {
+      throw new OpenPptError(
+        ErrorCodes.EXPORT,
+        `Import target is a directory: ${record.target}`,
+      );
+    }
+  }
+
+  try {
+    for (const record of records) {
+      mkdirSync(dirname(record.target), { recursive: true });
+      writeFileSync(record.temp, record.data);
+    }
+  } catch (err) {
+    for (const record of records) {
+      try {
+        if (existsSync(record.temp)) unlinkFile(record.temp);
+      } catch {
+        // keep the original write error
+      }
+    }
+    throw new OpenPptError(
+      ErrorCodes.EXPORT,
+      `Import staging failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+
+  try {
+    for (const record of records) {
+      if (!force) {
+        // A hard link is an atomic no-clobber install because temp and target
+        // share a directory/filesystem. EEXIST enters the rollback path.
+        linkSync(record.temp, record.target);
+        record.installed = true;
+        unlinkFile(record.temp);
+        continue;
+      }
+      if (existsSync(record.target)) {
+        record.backup = `${record.temp}.backup`;
+        renameFile(record.target, record.backup);
+      }
+      renameFile(record.temp, record.target);
+      record.installed = true;
+    }
+  } catch (err) {
+    let rollbackError = null;
+    for (const record of [...records].reverse()) {
+      try {
+        if (record.installed && existsSync(record.target)) {
+          unlinkFile(record.target);
+        }
+        if (record.backup && existsSync(record.backup)) {
+          renameFile(record.backup, record.target);
+        }
+        if (existsSync(record.temp)) unlinkFile(record.temp);
+      } catch (rollbackErr) {
+        rollbackError ||= rollbackErr;
+      }
+    }
+    throw new OpenPptError(
+      ErrorCodes.EXPORT,
+      `Import commit failed: ${err instanceof Error ? err.message : String(err)}` +
+        (rollbackError
+          ? `; rollback incomplete: ${rollbackError instanceof Error ? rollbackError.message : String(rollbackError)}`
+          : ""),
+    );
+  }
+
+  const cleanupWarnings = [];
+  for (const record of records) {
+    if (!record.backup || !existsSync(record.backup)) continue;
+    try {
+      unlinkFile(record.backup);
+    } catch (err) {
+      cleanupWarnings.push(
+        `could not remove import backup ${record.backup}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+  return cleanupWarnings;
+}
+
+/**
+ * Validate the complete imported deck, including extracted media, before any
+ * destination file is touched.
+ * @param {object} deck
+ * @param {{ relativePath: string, data: Buffer }[]} mediaOutputs
+ */
+function validateImportedDeck(deck, mediaOutputs) {
+  const stagingRoot = mkdtempSync(join(tmpdir(), "openppt-import-validate-"));
+  try {
+    for (const output of mediaOutputs) {
+      const path = join(stagingRoot, output.relativePath);
+      mkdirSync(dirname(path), { recursive: true });
+      writeFileSync(path, output.data);
+    }
+    validateDeck(deck, { projectRoot: stagingRoot, checkMedia: true });
+  } finally {
+    rmSync(stagingRoot, { recursive: true, force: true });
+  }
+}
+
+/**
  * Import a .pptx file into an OpenPPT project directory (lossy).
  * @param {string} pptxPath
  * @param {string} outDir
@@ -304,13 +446,6 @@ export async function importPptx(pptxPath, outDir, options = {}) {
     throw new OpenPptError(ErrorCodes.IO, `PPTX not found: ${absPptx}`);
   }
   const dest = resolve(outDir);
-  if (existsSync(join(dest, "deck.json")) && !force) {
-    throw new OpenPptError(
-      ErrorCodes.EXPORT,
-      `deck.json already exists in ${dest} (pass force=true)`,
-    );
-  }
-  mkdirSync(join(dest, "media"), { recursive: true });
 
   const buf = readFileSync(absPptx);
   const zip = await JSZip.loadAsync(buf);
@@ -343,6 +478,8 @@ export async function importPptx(pptxPath, outDir, options = {}) {
 
   /** @type {object[]} */
   const pages = [];
+  /** @type {{ relativePath: string, data: Buffer }[]} */
+  const mediaOutputs = [];
   let mediaIndex = 0;
 
   for (let si = 0; si < slidePaths.length; si += 1) {
@@ -389,7 +526,7 @@ export async function importPptx(pptxPath, outDir, options = {}) {
       const localName = `img-${++mediaIndex}${ext}`;
       const relMedia = `media/${localName}`;
       const bytes = await mediaFile.async("nodebuffer");
-      writeFileSync(join(dest, relMedia), bytes);
+      mediaOutputs.push({ relativePath: relMedia, data: bytes });
       relIdToMedia.set(rId, relMedia);
     }
 
@@ -428,7 +565,31 @@ export async function importPptx(pptxPath, outDir, options = {}) {
     pages,
   };
 
+  const referencedMedia = new Set(
+    pages.flatMap((page) =>
+      page.elements
+        .filter((element) => element.type === "image")
+        .map((element) => element.src),
+    ),
+  );
+  const usedMediaOutputs = mediaOutputs.filter((output) =>
+    referencedMedia.has(output.relativePath),
+  );
+  validateImportedDeck(deck, usedMediaOutputs);
+
   const deckPath = join(dest, "deck.json");
-  writeFileSync(deckPath, `${JSON.stringify(deck, null, 2)}\n`, "utf8");
+  warnings.push(
+    ...commitImportOutputs(
+      dest,
+      [
+        ...usedMediaOutputs,
+        {
+          relativePath: "deck.json",
+          data: `${JSON.stringify(deck, null, 2)}\n`,
+        },
+      ],
+      force,
+    ),
+  );
   return { deckPath, pageCount: pages.length, warnings };
 }

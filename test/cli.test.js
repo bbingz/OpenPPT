@@ -4,7 +4,6 @@ import { execFileSync, spawnSync } from "node:child_process";
 import {
   existsSync,
   statSync,
-  mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
@@ -85,16 +84,19 @@ describe("openppt CLI (shipped entry)", () => {
   });
 
   it("exports golden fixture via CLI", () => {
-    const outDir = join(root, "fixtures/golden/out");
-    mkdirSync(outDir, { recursive: true });
-    const out = join(outDir, "cli-deck.pptx");
-    const log = execFileSync(
-      bunBin,
-      [cli, "export", join(root, "fixtures/golden/deck.json"), "-o", out, "--force"],
-      { encoding: "utf8" },
-    );
-    assert.match(log, /Wrote/);
-    assert.ok(existsSync(out));
-    assert.ok(statSync(out).size > 0);
+    const outDir = mkdtempSync(join(tmpdir(), "openppt-cli-export-"));
+    try {
+      const out = join(outDir, "cli-deck.pptx");
+      const log = execFileSync(
+        bunBin,
+        [cli, "export", join(root, "fixtures/golden/deck.json"), "-o", out, "--force"],
+        { encoding: "utf8" },
+      );
+      assert.match(log, /Wrote/);
+      assert.ok(existsSync(out));
+      assert.ok(statSync(out).size > 0);
+    } finally {
+      rmSync(outDir, { recursive: true, force: true });
+    }
   });
 });

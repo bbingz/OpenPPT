@@ -2,7 +2,7 @@
 
 **Open intermediate representation (IR) → open-source compiler → editable PowerPoint (`.pptx`).**
 
-OpenPPT fills the open-source gap left by proprietary “YAML deck + closed WASM exporter” stacks: agents write a **declarative, schema-checked deck**, and a **deterministic OSS path** (pptxgenjs) produces a real, text-editable PPTX. **No Kimi / neo-ppt frontend mirror and no official WASM** are required for the default export path.
+OpenPPT fills the open-source gap left by proprietary “YAML deck + closed WASM exporter” stacks: agents write a **declarative, schema-checked deck**, and a **fully open OSS path** (pptxgenjs) produces a real, text-editable PPTX. **No Kimi / neo-ppt frontend mirror and no official WASM** are required for the default export path.
 
 | | |
 |---|---|
@@ -33,14 +33,14 @@ bun bin/openppt.js validate fixtures/golden/deck.json
 # export editable PPTX
 bun bin/openppt.js export fixtures/golden/deck.json -o out/deck.pptx --force
 
-# lossy import PPTX → IR project (text/shapes/images/tables)
+# lossy import PPTX → IR project (text/shapes/images/tables + best-effort charts)
 bun bin/openppt.js import out/deck.pptx -o recovered/ --force
 
 # structural layout QA (JSON report; --fail-on low|med|high|critical)
 bun bin/openppt.js qa fixtures/golden/deck.json
 bun bin/openppt.js qa fixtures/golden/deck.json --fail-on med
 
-# offline HTML preview
+# offline HTML preview (--force is required to replace an existing file)
 bun bin/openppt.js preview fixtures/golden/deck.json -o out/preview.html
 
 # pitch skeleton (cover + TOC + body + final)

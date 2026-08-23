@@ -33,7 +33,7 @@ Usage:
   bun bin/openppt.js export       <deck.json|yaml> -o <out.pptx> [--force]
   bun bin/openppt.js import       <file.pptx> -o <project-dir> [--force]
   bun bin/openppt.js qa           <deck.json|yaml> [--fail-on low|med|high|critical]
-  bun bin/openppt.js preview      <deck.json|yaml> -o <out.html>
+  bun bin/openppt.js preview      <deck.json|yaml> -o <out.html> [--force]
   bun bin/openppt.js -h | --help
   bun bin/openppt.js -V | --version
 
@@ -43,7 +43,7 @@ Notes:
   - Elements: text · shape · image · chart · table · group(stack|row|grid|layer)
   - from-outline: # title / ## section / - bullets → deck with layout groups
   - Export uses pptxgenjs only (no Kimi/neo-ppt WASM)
-  - import is lossy (text/shapes/images/tables)
+  - import is lossy (text/shapes/images/tables + best-effort charts)
   - qa --fail-on default: high
   - Runtime: Bun
 `);
@@ -139,6 +139,31 @@ function parseArgs(argv) {
   return opts;
 }
 
+function assertCommandOptions(opts) {
+  const allowed = {
+    init: new Set(["force", "theme", "title", "skeleton"]),
+    "from-outline": new Set(["output", "force", "theme"]),
+    validate: new Set(),
+    export: new Set(["output", "force"]),
+    import: new Set(["output", "force"]),
+    qa: new Set(["failOn"]),
+    preview: new Set(["output", "force"]),
+  };
+  const labels = {
+    output: "-o/--output",
+    force: "--force",
+    failOn: "--fail-on",
+    theme: "--theme",
+    title: "--title",
+    skeleton: "--skeleton",
+  };
+  for (const [key, label] of Object.entries(labels)) {
+    if (opts[key] && !allowed[opts.command].has(key)) {
+      throw new Error(`${opts.command} does not accept ${label}`);
+    }
+  }
+}
+
 async function main() {
   let opts;
   try {
@@ -155,6 +180,13 @@ async function main() {
   if (opts.help || !opts.command) {
     printHelp();
     process.exit(opts.help ? 0 : 2);
+  }
+
+  try {
+    assertCommandOptions(opts);
+  } catch (err) {
+    console.error(err.message);
+    process.exit(2);
   }
 
   if (!opts.input) {
@@ -214,10 +246,6 @@ async function main() {
     const { deck, projectRoot, sourcePath } = loadDeck(opts.input);
 
     if (opts.command === "validate") {
-      if (opts.output) {
-        console.error("validate does not accept -o/--output");
-        process.exit(2);
-      }
       validateDeck(deck, { projectRoot, checkMedia: true });
       console.log(`OK  ${sourcePath}`);
       console.log(
@@ -260,7 +288,10 @@ async function main() {
       }
       validateDeck(deck, { projectRoot, checkMedia: true });
       const { writePreviewHtml } = await import("../src/preview.js");
-      const out = writePreviewHtml(deck, projectRoot, opts.output);
+      const out = writePreviewHtml(deck, projectRoot, opts.output, {
+        force: opts.force,
+        sourcePath,
+      });
       console.log(`Wrote ${out}`);
       return;
     }

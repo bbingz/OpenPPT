@@ -1,6 +1,7 @@
-import { describe, it, before } from "node:test";
+import { after, before, describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, readFileSync, existsSync, rmSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
@@ -10,11 +11,15 @@ import { exportDeckFile } from "../src/index.js";
 import { OpenPptError, ErrorCodes } from "../src/errors.js";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
-const outDir = join(root, "fixtures/golden/out");
+let outDir;
 
 describe("compileToPptx (shipped)", () => {
   before(() => {
-    mkdirSync(outDir, { recursive: true });
+    outDir = mkdtempSync(join(tmpdir(), "openppt-compile-"));
+  });
+
+  after(() => {
+    if (outDir) rmSync(outDir, { recursive: true, force: true });
   });
 
   it("exports golden fixture to a non-empty PPTX ZIP with slide XML and fixture text", async () => {

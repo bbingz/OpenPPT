@@ -2,7 +2,6 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
   existsSync,
-  mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
@@ -99,12 +98,15 @@ describe("import / qa / preview", () => {
   it("writes an HTML preview containing page markup", () => {
     const { deck, projectRoot } = loadDeck(join(root, "fixtures/golden/deck.json"));
     validateDeck(deck, { projectRoot, checkMedia: true });
-    const outDir = join(root, "fixtures/golden/out");
-    mkdirSync(outDir, { recursive: true });
-    const htmlPath = join(outDir, "preview.html");
-    writePreviewHtml(deck, projectRoot, htmlPath);
-    const html = readFileSync(htmlPath, "utf8");
-    assert.match(html, /OpenPPT Golden Fixture/);
-    assert.match(html, /class="page"/);
+    const outDir = mkdtempSync(join(tmpdir(), "openppt-preview-"));
+    try {
+      const htmlPath = join(outDir, "preview.html");
+      writePreviewHtml(deck, projectRoot, htmlPath);
+      const html = readFileSync(htmlPath, "utf8");
+      assert.match(html, /OpenPPT Golden Fixture/);
+      assert.match(html, /class="page"/);
+    } finally {
+      rmSync(outDir, { recursive: true, force: true });
+    }
   });
 });

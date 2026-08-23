@@ -131,6 +131,7 @@
         "href": {
           "type": "string",
           "minLength": 1,
+          "pattern": "^(https?://|mailto:)[^\\s]+$",
           "description": "Optional hyperlink URL on the text box (http(s) or mailto)"
         }
       }

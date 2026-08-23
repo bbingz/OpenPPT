@@ -13,11 +13,19 @@ import { fileURLToPath } from "node:url";
 import { OpenPptError, ErrorCodes } from "./errors.js";
 
 const rootDir = join(dirname(fileURLToPath(import.meta.url)), "..");
+const THEME_IDS = new Set(["default", "dark", "magazine", "report"]);
 
 /**
  * @param {string} themeId default|dark|magazine|report
  */
 function loadThemeColors(themeId) {
+  if (!THEME_IDS.has(themeId)) {
+    throw new OpenPptError(
+      ErrorCodes.IO,
+      `Unknown theme "${themeId}" (available: default, dark, magazine, report)`,
+      { themeId },
+    );
+  }
   const path = join(rootDir, "themes", `${themeId}.json`);
   if (!existsSync(path)) {
     throw new OpenPptError(
@@ -49,14 +57,17 @@ export function initProject(outDir, options = {}) {
     );
   }
 
-  mkdirSync(join(dest, "media"), { recursive: true });
   const colors = loadThemeColors(theme);
+  mkdirSync(join(dest, "media"), { recursive: true });
 
   if (skeleton) {
     const src = join(rootDir, "templates/pitch-skeleton/deck.json");
     const raw = JSON.parse(readFileSync(src, "utf8"));
     raw.title = title;
     raw.theme = { colors };
+    const cover = raw.pages.find((page) => page.id === "cover");
+    const coverTitle = cover?.elements.find((element) => element.id === "cover-title");
+    if (coverTitle) coverTitle.text = title;
     writeFileSync(deckPath, `${JSON.stringify(raw, null, 2)}\n`, "utf8");
   } else {
     const deck = {

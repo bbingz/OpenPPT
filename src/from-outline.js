@@ -18,13 +18,22 @@ import {
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { OpenPptError, ErrorCodes } from "./errors.js";
+import { validateDeck } from "./validate.js";
 
 const rootDir = join(dirname(fileURLToPath(import.meta.url)), "..");
+const THEME_IDS = new Set(["default", "dark", "magazine", "report"]);
 
 /**
  * @param {string} themeId
  */
 function loadThemeColors(themeId) {
+  if (!THEME_IDS.has(themeId)) {
+    throw new OpenPptError(
+      ErrorCodes.IO,
+      `Unknown theme "${themeId}" (available: default, dark, magazine, report)`,
+      { themeId },
+    );
+  }
   const path = join(rootDir, "themes", `${themeId}.json`);
   if (!existsSync(path)) {
     throw new OpenPptError(
@@ -90,7 +99,20 @@ export function parseOutlineMarkdown(md) {
 export function outlineToDeck(outline, options = {}) {
   const theme = options.theme || "default";
   const colors = loadThemeColors(theme);
-  const size = options.size || [960, 540];
+  if (
+    options.size !== undefined &&
+    (!Array.isArray(options.size) ||
+      options.size.length !== 2 ||
+      options.size[0] !== 960 ||
+      options.size[1] !== 540)
+  ) {
+    throw new OpenPptError(
+      ErrorCodes.LAYOUT,
+      "from-outline currently supports only the 960x540 canvas",
+      { size: options.size },
+    );
+  }
+  const size = [960, 540];
 
   /** @type {object[]} */
   const pages = [
@@ -128,38 +150,51 @@ export function outlineToDeck(outline, options = {}) {
     },
   ];
 
-  // TOC when enough sections
+  // TOC when enough sections. Seven 36px entries plus six 16px gaps fit 380px.
   if (outline.sections.length >= 2) {
-    pages.push({
-      id: "toc",
-      background: { type: "solid", color: "$surface" },
-      elements: [
-        {
-          id: "toc-h",
-          type: "text",
-          bounds: [48, 32, 864, 40],
-          text: "Agenda",
-          fontSize: 26,
-          bold: true,
-          color: "$primary",
-        },
-        {
-          id: "toc-list",
-          type: "group",
-          layout: "stack",
-          bounds: [64, 100, 832, 380],
-          gap: 16,
-          children: outline.sections.map((sec, i) => ({
-            id: `toc-${i + 1}`,
+    const tocChunks = [];
+    for (let start = 0; start < outline.sections.length; start += 7) {
+      tocChunks.push(outline.sections.slice(start, start + 7));
+    }
+    for (let chunkIndex = 0; chunkIndex < tocChunks.length; chunkIndex += 1) {
+      const suffix = chunkIndex === 0 ? "" : `-${chunkIndex + 1}`;
+      pages.push({
+        id: `toc${suffix}`,
+        background: { type: "solid", color: "$surface" },
+        elements: [
+          {
+            id: `toc-h${suffix}`,
             type: "text",
-            height: 36,
-            text: `${String(i + 1).padStart(2, "0")}  ${sec.title}`,
-            fontSize: 18,
-            color: "$text",
-          })),
-        },
-      ],
-    });
+            bounds: [48, 32, 864, 40],
+            text:
+              tocChunks.length === 1
+                ? "Agenda"
+                : `Agenda ${chunkIndex + 1}/${tocChunks.length}`,
+            fontSize: 26,
+            bold: true,
+            color: "$primary",
+          },
+          {
+            id: `toc-list${suffix}`,
+            type: "group",
+            layout: "stack",
+            bounds: [64, 100, 832, 380],
+            gap: 16,
+            children: tocChunks[chunkIndex].map((sec, localIndex) => {
+              const sectionIndex = chunkIndex * 7 + localIndex;
+              return {
+                id: `toc-${sectionIndex + 1}`,
+                type: "text",
+                height: 36,
+                text: `${String(sectionIndex + 1).padStart(2, "0")}  ${sec.title}`,
+                fontSize: 18,
+                color: "$text",
+              };
+            }),
+          },
+        ],
+      });
+    }
   }
 
   for (let i = 0; i < outline.sections.length; i += 1) {
@@ -231,10 +266,11 @@ export function projectFromOutline(mdPath, outDir, options = {}) {
       `deck.json already exists in ${dest} (pass --force)`,
     );
   }
-  mkdirSync(join(dest, "media"), { recursive: true });
   const md = readFileSync(abs, "utf8");
   const outline = parseOutlineMarkdown(md);
   const deck = outlineToDeck(outline, { theme });
+  validateDeck(JSON.parse(JSON.stringify(deck)), { checkMedia: false });
+  mkdirSync(join(dest, "media"), { recursive: true });
   writeFileSync(deckPath, `${JSON.stringify(deck, null, 2)}\n`, "utf8");
   const keep = join(dest, "media", ".gitkeep");
   if (!existsSync(keep)) writeFileSync(keep, "", "utf8");

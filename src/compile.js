@@ -357,11 +357,10 @@ function buildPresentation(deck, colors, projectRoot) {
         /** @type {number[]} */
         let colWIn;
         if (Array.isArray(el.colW) && el.colW.length > 0) {
-          const sum = el.colW.reduce((a, b) => a + b, 0);
-          colWIn = el.colW.map((w) => (box.w * w) / sum);
-          // pad/truncate to colCount
-          while (colWIn.length < colCount) colWIn.push(box.w / colCount);
-          colWIn = colWIn.slice(0, colCount);
+          const weights = el.colW.slice(0, colCount);
+          while (weights.length < colCount) weights.push(1);
+          const sum = weights.reduce((a, b) => a + b, 0);
+          colWIn = weights.map((w) => (box.w * w) / sum);
         } else {
           colWIn = Array.from({ length: colCount }, () => box.w / colCount);
         }
