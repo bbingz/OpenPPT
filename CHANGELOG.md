@@ -2,13 +2,16 @@
 
 ## Unreleased — 2026-08-23
 
+- Atomic non-force deck creation now treats a successful hard link as the commit point; a later sibling-temp cleanup failure cannot delete the installed `deck.json`.
+- PPTX import now gives JSZip a comment-free view pinned to the exact EOCD and central directory accepted by preflight, and resource-limit aborts pause JSZip's inflate helper directly.
+- README agent guidance now starts from the authoring docs and identifies the JSON Schema as the normalized leaf-IR contract rather than the sole write-time source of truth.
 - PPTX import now fail-closes on bounded regular-file input, raw ZIP entry count, declared per-entry/aggregate sizes, and actual streamed inflate bytes before committing output; repeated relationships reuse one cached media output and imported media is budgeted before staging.
 - `validateDeck` now returns a typed load-first error for external page paths, enforces canonical `media/` paths even without media byte checks, rejects unsafe `colW` normalization, and expands authoring groups without mutating the caller.
 - Compile, preview, and QA now consume the normalized deck returned by validation; large finite table weights avoid intermediate multiplication overflow.
 - Public image sniffing now uses the bounded no-follow/nonblocking snapshot reader, byte-only sniff/size helpers are exported, and the unused path-based `readImageSize` helper was removed.
 - `init` and `from-outline` now stage `deck.json` in a sibling temp file, atomically avoid non-force races, and replace existing decks only with force.
 - Agent-facing documentation now distinguishes normalized leaf schema from authoring groups, uses non-destructive creation examples, documents `--skeleton`, colors-only theme copying, real template tokens, current chart support, and structural-preview limitations.
-- Local verification passed all 115 tests and the production dependency-audit gate on the current Bun 1.4.1 canary.
+- Local verification passed all 118 tests and the production dependency-audit gate on the current Bun 1.4.1 canary.
 - Added a source-grounded SVG/PNG architecture diagram covering project creation, IR normalization, fail-closed validation, immutable media snapshots, QA, preview, and editable PPTX export.
 - The package-install integration smoke now has a 30-second per-test timeout so cold Windows dependency resolution does not inherit Bun's 5-second unit-test default.
 - CI now runs a production dependency audit that accepts only the exact two reviewed `image-size@1.2.1` advisories while their affected parsers remain unreachable from OpenPPT and the PptxGenJS runtime entrypoint.

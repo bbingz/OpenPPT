@@ -165,9 +165,9 @@ full runtime resource policy.
 
 ## Agent usage (thin skill)
 
-1. Read `schema/openppt-ir.schema.json`. Optionally copy colors from `themes/default.json` into your deck's `theme.colors` (it is a **template only** — not auto-loaded at runtime).
-2. Write a self-contained project: `deck.json` + `media/*` next to it.
-3. Run `bun bin/openppt.js validate <deck.json>` and fix errors.
+1. Start with `docs/AGENT.md`. Use `schema/openppt-ir.schema.json` as the contract for normalized leaf IR; read `docs/IR.md` when authoring `group` nodes.
+2. Write a self-contained project: `deck.json` + `media/*` next to it. Optionally copy only the top-level `colors` value from `themes/default.json` into `deck.theme.colors` (the theme file is a **template only** — not auto-loaded at runtime).
+3. Run `bun bin/openppt.js validate <deck.json>` and fix errors. This uses `loadDeck` / `validateDeck` to expand authoring groups before leaf-schema validation; do not run raw Ajv against group-bearing authoring IR.
 4. Run `bun bin/openppt.js export <deck.json> -o <deck.pptx> --force`.
 5. Deliver both the IR project folder and the `.pptx`.
 

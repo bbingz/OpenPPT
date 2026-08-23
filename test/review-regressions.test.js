@@ -7,6 +7,7 @@ import {
   readFileSync,
   rmSync,
   truncateSync,
+  unlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -87,6 +88,18 @@ describe("review regressions", () => {
     const zip = await JSZip.loadAsync(
       await source.generateAsync({ type: "nodebuffer", compression: "DEFLATE" }),
     );
+    const entry = zip.file("entry.bin");
+    const internalStream = entry.internalStream.bind(entry);
+    let pauseCalls = 0;
+    entry.internalStream = (type) => {
+      const helper = internalStream(type);
+      const pause = helper.pause.bind(helper);
+      helper.pause = () => {
+        pauseCalls += 1;
+        return pause();
+      };
+      return helper;
+    };
     const readZipEntry = createBoundedZipReader(zip, {
       entryBytes: 32,
       totalBytes: 64,
@@ -101,6 +114,90 @@ describe("review regressions", () => {
         return true;
       },
     );
+    assert.equal(pauseCalls, 1);
+  });
+
+  it("pauses the JSZip helper directly when inflate crosses the byte ceiling", async () => {
+    const handlers = new Map();
+    let pauseCalls = 0;
+    const helper = {
+      on(event, handler) {
+        handlers.set(event, handler);
+        return this;
+      },
+      pause() {
+        pauseCalls += 1;
+        return this;
+      },
+      resume() {
+        handlers.get("data")(Buffer.alloc(33, 0x61));
+        return this;
+      },
+    };
+    const zip = {
+      file() {
+        return {
+          internalStream(type) {
+            assert.equal(type, "nodebuffer");
+            return helper;
+          },
+          nodeStream() {
+            throw new Error("Node adapter should not own bounded inflate");
+          },
+        };
+      },
+    };
+    const readZipEntry = createBoundedZipReader(zip, {
+      entryBytes: 32,
+      totalBytes: 64,
+    });
+
+    await assert.rejects(
+      () => readZipEntry("entry.bin"),
+      (err) => {
+        assert.ok(err instanceof OpenPptError);
+        assert.equal(err.code, ErrorCodes.RESOURCE_LIMIT);
+        return true;
+      },
+    );
+    assert.equal(pauseCalls, 1);
+  });
+
+  it("pins JSZip to the same EOCD accepted by import preflight", async () => {
+    const archive = Buffer.from(
+      await compileToBuffer(
+        deckWith({
+          id: "text1",
+          type: "text",
+          bounds: [10, 10, 200, 40],
+          text: "Hello",
+        }),
+        { projectRoot: process.cwd() },
+      ),
+    );
+    const signature = Buffer.from([0x50, 0x4b, 0x05, 0x06]);
+    const acceptedEocd = archive.lastIndexOf(signature);
+    const alternateEocd = Buffer.alloc(22);
+    signature.copy(alternateEocd);
+    const ambiguous = Buffer.concat([
+      archive,
+      alternateEocd,
+      Buffer.from([0x58]),
+    ]);
+    ambiguous.writeUInt16LE(alternateEocd.length + 1, acceptedEocd + 20);
+
+    const work = mkdtempSync(join(tmpdir(), "openppt-import-eocd-"));
+    try {
+      const source = join(work, "ambiguous.pptx");
+      const destination = join(work, "out");
+      writeFileSync(source, ambiguous);
+
+      const result = await importPptx(source, destination);
+      assert.equal(result.pageCount, 1);
+      assert.equal(existsSync(join(destination, "deck.json")), true);
+    } finally {
+      rmSync(work, { recursive: true, force: true });
+    }
   });
 
   it("deduplicates repeated relationships to one imported ZIP media entry", async () => {
@@ -390,6 +487,38 @@ describe("review regressions", () => {
       assert.equal(
         readdirSync(work).some((name) => name.startsWith(".openppt-deck-")),
         false,
+      );
+    } finally {
+      rmSync(work, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps an installed deck when sibling-temp cleanup fails", () => {
+    const work = mkdtempSync(join(tmpdir(), "openppt-project-cleanup-"));
+    try {
+      const deckPath = join(work, "deck.json");
+      let cleanupCalls = 0;
+
+      assert.doesNotThrow(() =>
+        writeDeckFileAtomic(deckPath, '{"version":"new"}\n', {
+          unlinkSync(path) {
+            if (path !== deckPath) {
+              cleanupCalls += 1;
+              const err = new Error("injected temp cleanup failure");
+              err.code = "EPERM";
+              throw err;
+            }
+            unlinkSync(path);
+          },
+        }),
+      );
+
+      assert.equal(readFileSync(deckPath, "utf8"), '{"version":"new"}\n');
+      assert.equal(cleanupCalls, 1);
+      assert.equal(
+        readdirSync(work).filter((name) => name.startsWith(".openppt-deck-"))
+          .length,
+        1,
       );
     } finally {
       rmSync(work, { recursive: true, force: true });

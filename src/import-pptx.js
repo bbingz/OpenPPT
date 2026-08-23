@@ -359,6 +359,7 @@ function readPptxSnapshot(absPptx) {
  * Parse the classic ZIP central directory before JSZip allocates entry objects.
  * ZIP64 and multi-disk inputs exceed this importer's bounded, local-file scope.
  * @param {Buffer} archive
+ * @returns {Buffer} a view pinned to the validated end record
  */
 function assertZipCentralDirectoryLimits(archive) {
   const minimumEocd = 22;
@@ -448,6 +449,17 @@ function assertZipCentralDirectoryLimits(archive) {
   if (cursor !== eocd) {
     throw new OpenPptError(ErrorCodes.IO, "Invalid PPTX ZIP central directory size");
   }
+
+  // ZIP comments are irrelevant to PPTX. Removing them ensures JSZip's
+  // last-signature scan cannot select an end record that preflight rejected.
+  archive.writeUInt16LE(0, eocd + 20);
+  const pinnedArchive = archive.subarray(0, eocd + minimumEocd);
+  for (let offset = pinnedArchive.length - 4; offset > eocd; offset -= 1) {
+    if (pinnedArchive.readUInt32LE(offset) === ZIP_EOCD_SIGNATURE) {
+      throw new OpenPptError(ErrorCodes.IO, "Ambiguous PPTX ZIP end record");
+    }
+  }
+  return pinnedArchive;
 }
 
 /**
@@ -475,16 +487,15 @@ export function createBoundedZipReader(zip, limits = {}) {
         const chunks = [];
         let byteLength = 0;
         let settled = false;
-        const stream = entry.nodeStream("nodebuffer");
+        const helper = entry.internalStream("nodebuffer");
 
         const fail = (err) => {
           if (settled) return;
           settled = true;
-          stream.pause();
-          stream.destroy();
+          helper.pause();
           rejectEntry(err);
         };
-        stream.on("data", (chunk) => {
+        helper.on("data", (chunk) => {
           if (settled) return;
           const part = Buffer.from(chunk);
           byteLength += part.length;
@@ -507,12 +518,13 @@ export function createBoundedZipReader(zip, limits = {}) {
           }
           chunks.push(part);
         });
-        stream.on("error", (err) => fail(err));
-        stream.on("end", () => {
+        helper.on("error", (err) => fail(err));
+        helper.on("end", () => {
           if (settled) return;
           settled = true;
           resolveEntry(Buffer.concat(chunks, byteLength));
         });
+        helper.resume();
       });
     } catch (err) {
       if (err instanceof OpenPptError) throw err;
@@ -683,10 +695,10 @@ export async function importPptx(pptxPath, outDir, options = {}) {
   const dest = resolve(outDir);
 
   const buf = readPptxSnapshot(absPptx);
-  assertZipCentralDirectoryLimits(buf);
+  const pinnedBuf = assertZipCentralDirectoryLimits(buf);
   let zip;
   try {
-    zip = await JSZip.loadAsync(buf);
+    zip = await JSZip.loadAsync(pinnedBuf);
   } catch (err) {
     throw new OpenPptError(
       ErrorCodes.IO,
