@@ -9,7 +9,11 @@ import {
 import { dirname, resolve, join } from "node:path";
 import { randomBytes } from "node:crypto";
 import PptxGenJS from "pptxgenjs";
-import { validateDeck, resolveColor, safeProjectPath } from "./validate.js";
+import {
+  imageSizeFromBytes,
+  resolveColor,
+  validateDeck,
+} from "./validate.js";
 import { OpenPptError, ErrorCodes } from "./errors.js";
 
 /** CSS px → inches at 96dpi (matches common web/PPT mapping). */
@@ -23,95 +27,13 @@ const PX_PER_IN = 96;
  * @returns {{ width: number, height: number } | null}
  */
 export function readImageSize(absPath) {
-  let buf;
+  let bytes;
   try {
-    buf = readFileSync(absPath);
+    bytes = readFileSync(absPath);
   } catch {
     return null;
   }
-  if (buf.length < 24) return null;
-
-  // PNG
-  if (
-    buf[0] === 0x89 &&
-    buf[1] === 0x50 &&
-    buf[2] === 0x4e &&
-    buf[3] === 0x47
-  ) {
-    return { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20) };
-  }
-
-  // GIF
-  if (buf[0] === 0x47 && buf[1] === 0x49 && buf[2] === 0x46) {
-    return { width: buf.readUInt16LE(6), height: buf.readUInt16LE(8) };
-  }
-
-  // JPEG — scan SOF0/1/2
-  if (buf[0] === 0xff && buf[1] === 0xd8) {
-    let i = 2;
-    while (i < buf.length - 8) {
-      if (buf[i] !== 0xff) {
-        i += 1;
-        continue;
-      }
-      const marker = buf[i + 1];
-      if (marker === 0xd8 || marker === 0xd9) {
-        i += 2;
-        continue;
-      }
-      if (marker === 0x00 || marker === 0xff) {
-        i += 1;
-        continue;
-      }
-      if (i + 8 >= buf.length) break;
-      // SOF markers that carry dimensions
-      if (
-        (marker >= 0xc0 && marker <= 0xc3) ||
-        (marker >= 0xc5 && marker <= 0xc7) ||
-        (marker >= 0xc9 && marker <= 0xcb) ||
-        (marker >= 0xcd && marker <= 0xcf)
-      ) {
-        return {
-          height: buf.readUInt16BE(i + 5),
-          width: buf.readUInt16BE(i + 7),
-        };
-      }
-      const segLen = buf.readUInt16BE(i + 2);
-      if (segLen < 2) break;
-      i += 2 + segLen;
-    }
-    return null;
-  }
-
-  // WEBP
-  if (
-    buf.toString("ascii", 0, 4) === "RIFF" &&
-    buf.toString("ascii", 8, 12) === "WEBP" &&
-    buf.length >= 30
-  ) {
-    const chunk = buf.toString("ascii", 12, 16);
-    if (chunk === "VP8X") {
-      return {
-        width: 1 + buf[24] + (buf[25] << 8) + (buf[26] << 16),
-        height: 1 + buf[27] + (buf[28] << 8) + (buf[29] << 16),
-      };
-    }
-    if (chunk === "VP8 " && buf.length >= 30) {
-      return {
-        width: buf.readUInt16LE(26) & 0x3fff,
-        height: buf.readUInt16LE(28) & 0x3fff,
-      };
-    }
-    if (chunk === "VP8L" && buf.length >= 25) {
-      const bits = buf.readUInt32LE(21);
-      return {
-        width: (bits & 0x3fff) + 1,
-        height: ((bits >> 14) & 0x3fff) + 1,
-      };
-    }
-  }
-
-  return null;
+  return imageSizeFromBytes(bytes);
 }
 
 /**
@@ -196,9 +118,9 @@ function mapShape(shape, pptx) {
  * Shared slide renderer used by file and buffer export paths.
  * @param {object} deck
  * @param {Record<string, string>} colors
- * @param {string} projectRoot
+ * @param {Map<string, object>} mediaSnapshots
  */
-function buildPresentation(deck, colors, projectRoot) {
+function buildPresentation(deck, colors, mediaSnapshots) {
   const [canvasW, canvasH] = deck.size;
   const pptx = new PptxGenJS();
   pptx.defineLayout({
@@ -292,7 +214,15 @@ function buildPresentation(deck, colors, projectRoot) {
           },
         });
       } else if (el.type === "image") {
-        const abs = safeProjectPath(projectRoot, el.src);
+        const mediaSrc = el.src;
+        const snapshot = mediaSnapshots.get(mediaSrc);
+        if (!snapshot?.dataUri) {
+          throw new OpenPptError(
+            ErrorCodes.MEDIA_MISSING,
+            `No validated media snapshot for image: ${mediaSrc}`,
+            { elementId: el.id, src: mediaSrc },
+          );
+        }
         // Default cover: fill box without stretching (crop overflow).
         // fit=fill keeps legacy stretch; fit=contain letterboxes.
         // pptxgenjs quirk: sizing cover/contain uses options.w/h as image aspect
@@ -300,14 +230,17 @@ function buildPresentation(deck, colors, projectRoot) {
         const fit = el.fit || "cover";
         /** @type {Record<string, unknown>} */
         const imgOpts = {
-          path: abs,
+          // PptxGenJS deduplicates by path, but uses data when both are present.
+          // The path is an identity key only and is never reopened by the writer.
+          path: snapshot.path,
+          data: snapshot.dataUri,
           x: box.x,
           y: box.y,
           w: box.w,
           h: box.h,
         };
         if (fit === "cover" || fit === "contain" || fit === "crop") {
-          const nat = readImageSize(abs);
+          const nat = snapshot.naturalSize;
           const mode = fit === "contain" ? "contain" : "cover";
           if (nat && nat.width > 0 && nat.height > 0) {
             const place = placementForFit(nat, box, mode);
@@ -465,7 +398,11 @@ function realOrResolve(p) {
  */
 export async function compileToPptx(deck, outputPath, options) {
   const { projectRoot, force = false, sourcePath } = options;
-  const { colors } = validateDeck(deck, { projectRoot, checkMedia: true });
+  const { colors, mediaSnapshots } = validateDeck(deck, {
+    projectRoot,
+    checkMedia: true,
+    captureMedia: true,
+  });
 
   const out = resolve(outputPath);
   const outKey = realOrResolve(out);
@@ -489,7 +426,7 @@ export async function compileToPptx(deck, outputPath, options) {
   }
 
   mkdirSync(dirname(out), { recursive: true });
-  const pptx = buildPresentation(deck, colors, projectRoot);
+  const pptx = buildPresentation(deck, colors, mediaSnapshots);
   // pptxgenjs appends ".pptx" when the path does not already end with it.
   const tmp = join(
     dirname(out),
@@ -531,8 +468,12 @@ export async function compileToPptx(deck, outputPath, options) {
  */
 export async function compileToBuffer(deck, options) {
   const { projectRoot } = options;
-  const { colors } = validateDeck(deck, { projectRoot, checkMedia: true });
-  const pptx = buildPresentation(deck, colors, projectRoot);
+  const { colors, mediaSnapshots } = validateDeck(deck, {
+    projectRoot,
+    checkMedia: true,
+    captureMedia: true,
+  });
+  const pptx = buildPresentation(deck, colors, mediaSnapshots);
   const data = await pptx.write({ outputType: "nodebuffer" });
   return Buffer.isBuffer(data) ? data : Buffer.from(data);
 }

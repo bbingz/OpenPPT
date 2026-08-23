@@ -5,7 +5,6 @@
 import {
   writeFileSync,
   mkdirSync,
-  readFileSync,
   existsSync,
   realpathSync,
   renameSync,
@@ -13,7 +12,7 @@ import {
 } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { dirname, join, resolve } from "node:path";
-import { resolveColor, safeProjectPath, validateDeck } from "./validate.js";
+import { resolveColor, validateDeck } from "./validate.js";
 import { OpenPptError, ErrorCodes } from "./errors.js";
 
 /**
@@ -37,8 +36,11 @@ function cssColor(hex) {
  * @returns {string} HTML document
  */
 export function renderPreviewHtml(deck, projectRoot) {
-  validateDeck(deck, { projectRoot, checkMedia: true });
-  const colors = { ...(deck.theme?.colors || {}) };
+  const { colors, mediaSnapshots } = validateDeck(deck, {
+    projectRoot,
+    checkMedia: true,
+    captureMedia: true,
+  });
   const [cw, ch] = deck.size;
   const pagesHtml = deck.pages
     .map((page, pi) => {
@@ -92,25 +94,17 @@ export function renderPreviewHtml(deck, projectRoot) {
             return `<div class="el text" style="${style}color:${color};font-size:${fs}px;font-weight:${fw};text-align:${align};display:flex;align-items:${el.valign === "middle" ? "center" : el.valign === "bottom" ? "flex-end" : "flex-start"};">${text}</div>`;
           }
           if (el.type === "image") {
-            const abs = safeProjectPath(projectRoot, el.src);
-            let srcAttr = "";
-            if (existsSync(abs)) {
-              const b64 = readFileSync(abs).toString("base64");
-              const ext = abs.split(".").pop()?.toLowerCase() || "png";
-              const mime =
-                ext === "jpg" || ext === "jpeg"
-                  ? "image/jpeg"
-                  : ext === "svg"
-                    ? "image/svg+xml"
-                    : ext === "webp"
-                      ? "image/webp"
-                      : ext === "gif"
-                        ? "image/gif"
-                        : "image/png";
-              srcAttr = `data:${mime};base64,${b64}`;
+            const mediaSrc = el.src;
+            const snapshot = mediaSnapshots.get(mediaSrc);
+            if (!snapshot?.dataUri) {
+              throw new OpenPptError(
+                ErrorCodes.MEDIA_MISSING,
+                `No validated media snapshot for image: ${mediaSrc}`,
+                { elementId: el.id, src: mediaSrc },
+              );
             }
             const fit = el.fit === "contain" ? "contain" : el.fit === "fill" ? "fill" : "cover";
-            return `<img class="el image" src="${srcAttr}" alt="" style="${style}object-fit:${fit};"/>`;
+            return `<img class="el image" src="${snapshot.dataUri}" alt="" style="${style}object-fit:${fit};"/>`;
           }
           if (el.type === "chart") {
             return `<div class="el chart" style="${style}border:1px dashed #94a3b8;display:flex;align-items:center;justify-content:center;font:14px sans-serif;color:#64748b;background:#f8fafc;">chart: ${escapeHtml(el.chartType || "?")} ${escapeHtml(el.title || "")}</div>`;
