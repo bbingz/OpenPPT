@@ -75,7 +75,7 @@ bun "$OPENPPT_ROOT/bin/openppt.js" validate /abs/path/deck.json
 bun "$OPENPPT_ROOT/bin/openppt.js" qa       /abs/path/deck.json
 bun "$OPENPPT_ROOT/bin/openppt.js" qa       /abs/path/deck.json --fail-on med
 bun "$OPENPPT_ROOT/bin/openppt.js" export  /abs/path/deck.json -o /abs/path/deck.pptx --force
-bun "$OPENPPT_ROOT/bin/openppt.js" preview /abs/path/deck.json -o /abs/path/preview.html
+bun "$OPENPPT_ROOT/bin/openppt.js" preview /abs/path/deck.json -o /abs/path/preview.html --force
 ```
 
 Import existing PPTX (lossy):
@@ -116,7 +116,7 @@ Optional: remind the user they can re-export after IR edits with the same Bun co
 ## Out of scope for this skill
 
 - Kimi / open-kimi-ppt / neo-ppt / PPTD WASM paths
-- Charts, animations, font embedding (not in OpenPPT v1.0.x)
+- Animations and font embedding parity (chart authoring is supported; chart import is best-effort)
 - HTML-only slide decks (use another skill)
 
 ## Quick reference — minimal deck

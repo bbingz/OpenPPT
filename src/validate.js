@@ -21,7 +21,12 @@ const MEDIA_EXTENSIONS = new Set([
  */
 export function assertMediaSubtree(src) {
   const normalized = src.replace(/\\/g, "/");
-  if (normalized === "media" || normalized.startsWith("media/")) {
+  const segments = normalized.split("/");
+  if (
+    segments[0] === "media" &&
+    segments.length > 1 &&
+    segments.slice(1).every((segment) => segment && segment !== "." && segment !== "..")
+  ) {
     return;
   }
   throw new OpenPptError(
@@ -323,6 +328,21 @@ export function validateDeck(deck, options = {}) {
           );
         }
         if (el.color) resolveColor(el.color, colors, `${ectx}.color`);
+        if (Array.isArray(el.text)) {
+          for (let ri = 0; ri < el.text.length; ri += 1) {
+            const run = el.text[ri];
+            if (run.fontSize !== undefined && !Number.isFinite(run.fontSize)) {
+              throw new OpenPptError(
+                ErrorCodes.SCHEMA,
+                `fontSize must be finite at ${ectx}.text[${ri}]`,
+                { pageId: page.id, elementId: el.id, runIndex: ri },
+              );
+            }
+            if (run.color) {
+              resolveColor(run.color, colors, `${ectx}.text[${ri}].color`);
+            }
+          }
+        }
       } else if (el.type === "shape") {
         if (el.lineWidth !== undefined && !Number.isFinite(el.lineWidth)) {
           throw new OpenPptError(
@@ -444,6 +464,20 @@ export function validateDeck(deck, options = {}) {
             { pageId: page.id, elementId: el.id },
           );
         }
+        if (el.borderWidth !== undefined && !Number.isFinite(el.borderWidth)) {
+          throw new OpenPptError(
+            ErrorCodes.SCHEMA,
+            `borderWidth must be finite at ${ectx}`,
+            { pageId: page.id, elementId: el.id },
+          );
+        }
+        if (el.colW?.some((width) => !Number.isFinite(width))) {
+          throw new OpenPptError(
+            ErrorCodes.SCHEMA,
+            `colW must contain finite numbers at ${ectx}`,
+            { pageId: page.id, elementId: el.id },
+          );
+        }
         if (el.borderColor) {
           resolveColor(el.borderColor, colors, `${ectx}.borderColor`);
         }
@@ -451,7 +485,24 @@ export function validateDeck(deck, options = {}) {
           const row = el.rows[ri];
           for (let ci = 0; ci < row.length; ci += 1) {
             const cell = row[ci];
+            if (typeof cell === "number" && !Number.isFinite(cell)) {
+              throw new OpenPptError(
+                ErrorCodes.SCHEMA,
+                `Numeric table cell must be finite at ${ectx}.rows[${ri}][${ci}]`,
+                { pageId: page.id, elementId: el.id, row: ri, column: ci },
+              );
+            }
             if (cell && typeof cell === "object" && !Array.isArray(cell)) {
+              if (
+                cell.fontSize !== undefined &&
+                !Number.isFinite(cell.fontSize)
+              ) {
+                throw new OpenPptError(
+                  ErrorCodes.SCHEMA,
+                  `fontSize must be finite at ${ectx}.rows[${ri}][${ci}]`,
+                  { pageId: page.id, elementId: el.id, row: ri, column: ci },
+                );
+              }
               if (cell.color) {
                 resolveColor(cell.color, colors, `${ectx}.rows[${ri}][${ci}].color`);
               }

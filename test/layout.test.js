@@ -1,6 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, writeFileSync, rmSync, existsSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFileSync, spawnSync } from "node:child_process";
@@ -223,20 +224,22 @@ describe("layout primitives (stack/row/grid)", () => {
       }
     }
     validateDeck(deck, { projectRoot, checkMedia: false });
-    const outDir = join(root, "fixtures/layout-demo/out");
-    mkdirSync(outDir, { recursive: true });
-    const out = join(outDir, "layout.pptx");
-    if (existsSync(out)) rmSync(out);
-    const result = await compileToPptx(deck, out, {
-      projectRoot,
-      force: true,
-      sourcePath,
-    });
-    assert.equal(result.pageCount, 3);
-    assert.ok(existsSync(out));
-    const listing = execFileSync("unzip", ["-l", out], { encoding: "utf8" });
-    assert.match(listing, /slide1\.xml/);
-    assert.match(listing, /slide3\.xml/);
+    const outDir = mkdtempSync(join(tmpdir(), "openppt-layout-"));
+    try {
+      const out = join(outDir, "layout.pptx");
+      const result = await compileToPptx(deck, out, {
+        projectRoot,
+        force: true,
+        sourcePath,
+      });
+      assert.equal(result.pageCount, 3);
+      assert.ok(existsSync(out));
+      const listing = execFileSync("unzip", ["-l", out], { encoding: "utf8" });
+      assert.match(listing, /slide1\.xml/);
+      assert.match(listing, /slide3\.xml/);
+    } finally {
+      rmSync(outDir, { recursive: true, force: true });
+    }
   });
 
   it("qa --fail-on med exits non-zero when only med issues exist", () => {
@@ -300,17 +303,20 @@ describe("layout primitives (stack/row/grid)", () => {
     }
 
     // CLI: write temp deck with sparse page (low) — use med via high density
-    const dir = join(root, "fixtures/layout-demo/out");
-    mkdirSync(dir, { recursive: true });
-    const path = join(dir, "dense-qa.json");
-    writeFileSync(path, JSON.stringify(dense));
-    const high = spawnSync(bunBin, [cli, "qa", path], { encoding: "utf8" });
-    const med = spawnSync(bunBin, [cli, "qa", path, "--fail-on", "med"], {
-      encoding: "utf8",
-    });
-    // OVERLAP bothShape is med; HIGH_DENSITY is med — ok default true if no high
-    assert.equal(high.status, 0, high.stdout + high.stderr);
-    assert.equal(med.status, 1, med.stdout + med.stderr);
-    assert.match(med.stdout, /"ok": false/);
+    const dir = mkdtempSync(join(tmpdir(), "openppt-layout-qa-"));
+    try {
+      const path = join(dir, "dense-qa.json");
+      writeFileSync(path, JSON.stringify(dense));
+      const high = spawnSync(bunBin, [cli, "qa", path], { encoding: "utf8" });
+      const med = spawnSync(bunBin, [cli, "qa", path, "--fail-on", "med"], {
+        encoding: "utf8",
+      });
+      // OVERLAP bothShape is med; HIGH_DENSITY is med — ok default true if no high
+      assert.equal(high.status, 0, high.stdout + high.stderr);
+      assert.equal(med.status, 1, med.stdout + med.stderr);
+      assert.match(med.stdout, /"ok": false/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

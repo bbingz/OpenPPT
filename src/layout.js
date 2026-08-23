@@ -103,7 +103,6 @@ function toLeaf(child, bounds) {
   delete leaf.layout;
   delete leaf.gap;
   delete leaf.padding;
-  delete leaf.align;
   delete leaf.justify;
   delete leaf.columns;
   delete leaf.flex;
@@ -112,6 +111,36 @@ function toLeaf(child, bounds) {
   delete leaf.width;
   leaf.bounds = bounds;
   return leaf;
+}
+
+/**
+ * Enforce the deck-wide element-id contract before authoring-only group ids
+ * disappear during flattening.
+ * @param {object} deck
+ */
+function assertUniqueAuthoringIds(deck) {
+  /** @type {Set<string>} */
+  const ids = new Set();
+
+  function visit(elements) {
+    if (!Array.isArray(elements)) return;
+    for (const element of elements) {
+      if (!element || typeof element !== "object") continue;
+      if (typeof element.id === "string") {
+        if (ids.has(element.id)) {
+          throw new OpenPptError(
+            ErrorCodes.SCHEMA,
+            `Duplicate element id: ${element.id}`,
+            { elementId: element.id },
+          );
+        }
+        ids.add(element.id);
+      }
+      if (element.type === "group") visit(element.children);
+    }
+  }
+
+  for (const page of deck.pages) visit(page?.elements);
 }
 
 /**
@@ -527,6 +556,7 @@ export function expandLayouts(deck) {
   if (!deck || typeof deck !== "object" || !Array.isArray(deck.pages)) {
     return deck;
   }
+  assertUniqueAuthoringIds(deck);
   const pages = deck.pages.map((page, index) => {
     if (typeof page === "string") {
       // multi-file paths should already be expanded by loadDeck

@@ -1,6 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, statSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, statSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadDeck } from "../src/load.js";
@@ -20,16 +21,19 @@ describe("templates (shipped skeletons)", () => {
       ["cover", "toc", "body", "final"],
     );
 
-    const outDir = join(root, "templates/pitch-skeleton/out");
-    mkdirSync(outDir, { recursive: true });
-    const out = join(outDir, "pitch.pptx");
-    const result = await compileToPptx(deck, out, {
-      projectRoot,
-      force: true,
-      sourcePath: deckPath,
-    });
-    assert.ok(existsSync(result.outputPath));
-    assert.ok(statSync(result.outputPath).size > 1000);
-    assert.equal(result.pageCount, 4);
+    const outDir = mkdtempSync(join(tmpdir(), "openppt-template-"));
+    try {
+      const out = join(outDir, "pitch.pptx");
+      const result = await compileToPptx(deck, out, {
+        projectRoot,
+        force: true,
+        sourcePath: deckPath,
+      });
+      assert.ok(existsSync(result.outputPath));
+      assert.ok(statSync(result.outputPath).size > 1000);
+      assert.equal(result.pageCount, 4);
+    } finally {
+      rmSync(outDir, { recursive: true, force: true });
+    }
   });
 });

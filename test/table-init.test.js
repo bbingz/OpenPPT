@@ -2,7 +2,6 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
   existsSync,
-  mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
@@ -29,23 +28,26 @@ describe("tables + init", () => {
       join(root, "fixtures/table-demo/deck.json"),
     );
     validateDeck(deck, { projectRoot, checkMedia: false });
-    const outDir = join(root, "fixtures/table-demo/out");
-    mkdirSync(outDir, { recursive: true });
-    const out = join(outDir, "table.pptx");
-    const result = await compileToPptx(deck, out, {
-      projectRoot,
-      force: true,
-      sourcePath,
-    });
-    assert.ok(statSync(result.outputPath).size > 1000);
-    const listing = execFileSync("unzip", ["-l", out], { encoding: "utf8" });
-    assert.match(listing, /slide1\.xml/);
-    // OOXML table marker
-    const xml = execFileSync("unzip", ["-p", out, "ppt/slides/slide1.xml"], {
-      encoding: "utf8",
-    });
-    assert.match(xml, /a:tbl|a:tc/);
-    assert.match(xml, /OpenPPT tables|Feature|Charts/);
+    const outDir = mkdtempSync(join(tmpdir(), "openppt-table-"));
+    try {
+      const out = join(outDir, "table.pptx");
+      const result = await compileToPptx(deck, out, {
+        projectRoot,
+        force: true,
+        sourcePath,
+      });
+      assert.ok(statSync(result.outputPath).size > 1000);
+      const listing = execFileSync("unzip", ["-l", out], { encoding: "utf8" });
+      assert.match(listing, /slide1\.xml/);
+      // OOXML table marker
+      const xml = execFileSync("unzip", ["-p", out, "ppt/slides/slide1.xml"], {
+        encoding: "utf8",
+      });
+      assert.match(xml, /a:tbl|a:tc/);
+      assert.match(xml, /OpenPPT tables|Feature|Charts/);
+    } finally {
+      rmSync(outDir, { recursive: true, force: true });
+    }
   });
 
   it("round-trips table through export → import", async () => {

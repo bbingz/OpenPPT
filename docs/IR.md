@@ -42,7 +42,7 @@ Machine-readable schema: [`../schema/openppt-ir.schema.json`](../schema/openppt-
 | `table` | id, bounds, rows | rows of string/number or `{text, bold?, fill?, color?, align?, fontSize?}`; optional `header`, `colW`, `borderColor` |
 | `group` | id, bounds, layout, children | **Authoring only** — expanded at load to leaves (see below) |
 
-Text boxes may include optional `href` (URL) for a hyperlink on the whole box.
+Text boxes may include optional `href` using `http://`, `https://`, or `mailto:` for a hyperlink on the whole box.
 
 ## Layout primitives (v1.4)
 
@@ -77,12 +77,13 @@ Agents may nest `type: "group"` instead of hand-computing every `[x,y,w,h]`.
 - `justify`: `start` \| `center` \| `end` \| `space-between` (main axis leftover when no flex)
 - Nested groups allowed; group nodes are **removed** after expansion (not drawn)
 - Overflow of fixed sizes → `LAYOUT_INVALID` (fail-closed)
+- `from-outline` currently targets the standard `960×540` canvas only
 - Leaf JSON Schema still describes post-expansion IR; `loadDeck` / `validateDeck` expand groups first
 - Demo: `fixtures/layout-demo/deck.json`
 
 ## Media policy
 
-- All `image.src` values must start with `media/` (forward slashes).
+- All `image.src` values must use canonical `media/...` paths (forward slashes; no empty, `.` or `..` segments).
 - File must exist, be a regular file, and pass path jail (no symlink escape).
 - Extension must match sniffed content (e.g. `.png` must be a real PNG).
 - Remote URLs are not accepted on the default export path.
