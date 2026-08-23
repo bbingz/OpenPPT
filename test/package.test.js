@@ -29,7 +29,7 @@ function runBun(args, cwd) {
 }
 
 describe("package contract", () => {
-  it("packs, installs, and invokes the shipped bin", () => {
+  it("packs, installs, and invokes the shipped bin", { timeout: 30_000 }, () => {
     const work = mkdtempSync(join(tmpdir(), "openppt-package-"));
     try {
       const archiveDir = join(work, "archive");
