@@ -1,13 +1,13 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { execFileSync } from "node:child_process";
 import { loadDeck } from "../src/load.js";
 import { validateDeck } from "../src/validate.js";
 import { compileToPptx } from "../src/compile.js";
+import { openPptx, readPptxEntry } from "./helpers/pptx.js";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -29,21 +29,12 @@ describe("charts (shipped)", () => {
       assert.ok(existsSync(result.outputPath));
       assert.ok(statSync(result.outputPath).size > 1000);
 
-      const listing = execFileSync("unzip", ["-l", result.outputPath], {
-        encoding: "utf8",
-      });
-      assert.match(listing, /ppt\/slides\/slide1\.xml/);
+      const pptx = await openPptx(result.outputPath);
+      assert.ok(pptx.file("ppt/slides/slide1.xml"));
       // pptxgenjs emits chart parts for chart slides
-      assert.match(listing, /ppt\/charts\//);
+      assert.ok(Object.keys(pptx.files).some((name) => name.startsWith("ppt/charts/")));
 
-      const extractDir = join(outDir, "extract");
-      mkdirSync(extractDir, { recursive: true });
-      execFileSync(
-        "unzip",
-        ["-o", result.outputPath, "ppt/slides/slide1.xml", "-d", extractDir],
-        { encoding: "utf8" },
-      );
-      const xml = readFileSync(join(extractDir, "ppt/slides/slide1.xml"), "utf8");
+      const xml = await readPptxEntry(pptx, "ppt/slides/slide1.xml");
       assert.match(xml, /Quarterly results|a:t/);
     } finally {
       rmSync(outDir, { recursive: true, force: true });

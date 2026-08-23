@@ -8,7 +8,7 @@ OpenPPT fills the open-source gap left by proprietary “YAML deck + closed WASM
 |---|---|
 | **Version** | **1.5.0** |
 | **License** | Apache-2.0 (see `LICENSE` + `NOTICE`) |
-| **Runtime** | **Bun** ≥ 1.1 (preferred; scripts and shebang use Bun) |
+| **Runtime** | **Bun** ≥ 1.4 (scripts, lockfile, and shebang use Bun) |
 | **Default exporter** | [pptxgenjs](https://github.com/gitbrent/PptxGenJS) (MIT) |
 | **Repo** | https://github.com/bbingz/OpenPPT |
 
