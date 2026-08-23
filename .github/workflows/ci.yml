@@ -46,3 +46,16 @@ jobs:
           bun bin/openppt.js export fixtures/chart-demo/deck.json -o "${{ runner.temp }}/chart.pptx" --force
           bun bin/openppt.js export fixtures/multi-file/deck.json -o "${{ runner.temp }}/multi.pptx" --force
           bun -e "import { statSync } from 'node:fs'; for (const file of process.argv.slice(1)) { if (statSync(file).size < 1) throw new Error('empty export: ' + file); }" "${{ runner.temp }}/golden.pptx" "${{ runner.temp }}/chart.pptx" "${{ runner.temp }}/multi.pptx"
+
+  production-audit:
+    name: production dependency audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.0"
+      - name: Install
+        run: bun install --frozen-lockfile
+      - name: Audit production dependencies
+        run: bun scripts/verify-production-audit.js
