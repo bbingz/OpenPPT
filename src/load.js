@@ -4,6 +4,7 @@ import { parse as parseYaml } from "yaml";
 import { OpenPptError, ErrorCodes } from "./errors.js";
 import { safeProjectPath } from "./validate.js";
 import { expandLayouts } from "./layout.js";
+import { assertDeckResourceLimits } from "./resource-limits.js";
 
 /**
  * Parse a JSON or YAML file into an object.
@@ -46,6 +47,7 @@ function parseDocumentFile(sourcePath) {
  */
 export function expandExternalPages(deck, projectRoot) {
   if (!Array.isArray(deck.pages)) return deck;
+  assertDeckResourceLimits(deck);
   const pages = deck.pages.map((entry, index) => {
     if (entry !== null && typeof entry === "object" && !Array.isArray(entry)) {
       return entry;
@@ -82,7 +84,9 @@ export function expandExternalPages(deck, projectRoot) {
     }
     return page;
   });
-  return { ...deck, pages };
+  const expanded = { ...deck, pages };
+  assertDeckResourceLimits(expanded);
+  return expanded;
 }
 
 /**
@@ -104,4 +108,3 @@ export function loadDeck(filePath) {
     sourcePath,
   };
 }
-

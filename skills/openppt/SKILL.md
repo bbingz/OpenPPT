@@ -86,7 +86,7 @@ bun "$OPENPPT_ROOT/bin/openppt.js" import /abs/path/in.pptx -o /abs/path/project
 
 If `OPENPPT_ROOT` is the current directory, use `bun bin/openppt.js ...`.
 
-Fix `SCHEMA_INVALID` / `BOUNDS_OUT_OF_RANGE` / `LAYOUT_INVALID` / `MEDIA_MISSING` / `MEDIA_TYPE_INVALID` / `THEME_COLOR_UNRESOLVED` before re-exporting. Fail-closed: do not hand-edit the PPTX to “paper over” IR errors.
+Fix `SCHEMA_INVALID` / `BOUNDS_OUT_OF_RANGE` / `LAYOUT_INVALID` / `MEDIA_MISSING` / `MEDIA_TYPE_INVALID` / `THEME_COLOR_UNRESOLVED` / `RESOURCE_LIMIT_EXCEEDED` before re-exporting. Fail-closed: do not hand-edit the PPTX to “paper over” IR errors.
 
 ### 5. Templates (skeletons)
 

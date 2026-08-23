@@ -14,6 +14,7 @@
  */
 
 import { OpenPptError, ErrorCodes } from "./errors.js";
+import { assertDeckResourceLimits } from "./resource-limits.js";
 
 const LAYOUTS = new Set(["stack", "row", "grid", "layer"]);
 const ALIGNS = new Set(["start", "center", "end", "stretch"]);
@@ -530,7 +531,7 @@ function expandGroup(group, ctx) {
  * @param {object} page
  * @returns {object} page with only leaf elements
  */
-export function expandPageLayouts(page) {
+function expandPageLayoutsUnchecked(page) {
   if (!page || typeof page !== "object") return page;
   if (!Array.isArray(page.elements)) return page;
 
@@ -548,6 +549,16 @@ export function expandPageLayouts(page) {
 }
 
 /**
+ * Expand one page while enforcing the same pre-expansion ceilings as a deck.
+ * @param {object} page
+ * @returns {object} page with only leaf elements
+ */
+export function expandPageLayouts(page) {
+  assertDeckResourceLimits({ pages: [page] });
+  return expandPageLayoutsUnchecked(page);
+}
+
+/**
  * Expand layout groups across the whole deck (after multi-file page load).
  * @param {object} deck
  * @returns {object} new deck with groups flattened
@@ -556,6 +567,7 @@ export function expandLayouts(deck) {
   if (!deck || typeof deck !== "object" || !Array.isArray(deck.pages)) {
     return deck;
   }
+  assertDeckResourceLimits(deck);
   assertUniqueAuthoringIds(deck);
   const pages = deck.pages.map((page, index) => {
     if (typeof page === "string") {
@@ -566,7 +578,7 @@ export function expandLayouts(deck) {
         { index, path: page },
       );
     }
-    return expandPageLayouts(page);
+    return expandPageLayoutsUnchecked(page);
   });
   return { ...deck, pages };
 }

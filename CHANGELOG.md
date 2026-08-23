@@ -2,6 +2,8 @@
 
 ## Unreleased — 2026-08-23
 
+- Validation now fails closed with `RESOURCE_LIMIT_EXCEEDED` on documented deck, authoring-group, string, chart/table collection, and referenced local-media ceilings before layout expansion or output generation.
+- Local resource-ceiling verification passed all 87 tests on Bun 1.4.0 and the current 1.4.1 canary.
 - CI now exercises Bun 1.4.0, stable, and canary plus stable Linux/macOS/Windows; PPTX assertions no longer depend on the system `unzip` command or POSIX-only smoke checks.
 - Package tests now install the generated tarball and invoke its `openppt` bin, including the package-manager shim on Windows.
 - The supported runtime floor is now Bun 1.4, matching the checked-in lockfile v2 format and the test runner contract.

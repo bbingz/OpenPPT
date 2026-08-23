@@ -31,6 +31,36 @@ Machine-readable schema: [`../schema/openppt-ir.schema.json`](../schema/openppt-
 - Neither rule lives in the JSON Schema (which cannot express cross-document
   uniqueness); both are enforced by `validateDeck`.
 
+## Resource ceilings
+
+OpenPPT enforces fixed safety ceilings before layout expansion and again before
+export, QA, or preview. They are runtime policy, not OOXML format limits.
+
+| Resource | Maximum |
+|---|---:|
+| Pages per deck | 256 |
+| Expanded leaf elements per page / deck | 512 / 8,192 |
+| Authoring nodes per page / deck | 1,024 / 16,384 |
+| Group nesting depth / direct children | 16 / 256 |
+| UTF-8 bytes per user-authored string / deck total | 64 KiB / 8 MiB |
+| Rich-text runs per text element | 1,024 |
+| Chart series per chart | 32 |
+| Chart points per series / chart / deck | 2,048 / 8,192 / 32,768 |
+| Table rows / columns per row or `colW` entries | 256 / 64 |
+| Table cells per table / deck | 8,192 / 32,768 |
+| Referenced local media per file / deck total | 32 MiB / 128 MiB |
+
+Authoring nodes include groups and leaves and are counted before groups are
+flattened. String accounting covers supported free-form IR values such as IDs,
+content, labels, paths, font families, hyperlinks, colors, and theme names.
+Structural and string limits apply even when media checks are disabled. Media
+byte limits apply when `checkMedia` is enabled and count each canonical resolved
+local path once, regardless of repeated references. Exceeding a ceiling throws
+`RESOURCE_LIMIT_EXCEEDED`.
+
+These ceilings do not limit source JSON/YAML bytes, imported PPTX archive
+expansion, generated output bytes, execution time, or process memory.
+
 ## Element types (v1.1+)
 
 | type | Required fields | Notes |
