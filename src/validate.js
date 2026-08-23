@@ -1,4 +1,12 @@
-import { openSync, readSync, closeSync, readFileSync, realpathSync, statSync } from "node:fs";
+import {
+  closeSync,
+  constants,
+  fstatSync,
+  openSync,
+  readFileSync,
+  readSync,
+  realpathSync,
+} from "node:fs";
 import { isAbsolute, extname, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import Ajv2020 from "ajv/dist/2020.js";
@@ -19,6 +27,12 @@ const MEDIA_EXTENSIONS = new Set([
   ".webp",
   ".svg",
 ]);
+
+const MEDIA_OPEN_FLAGS =
+  constants.O_RDONLY |
+  (process.platform === "win32"
+    ? 0
+    : (constants.O_NOFOLLOW || 0) | (constants.O_NONBLOCK || 0));
 
 /**
  * Require images under media/ (posix-style relative path).
@@ -42,65 +56,156 @@ export function assertMediaSubtree(src) {
 }
 
 /**
- * Sniff magic bytes / SVG start; returns a canonical type label or null.
+ * Sniff magic bytes / SVG start from an in-memory snapshot.
+ * @param {Buffer | Uint8Array} bytes
+ * @returns {string | null}
+ */
+export function sniffImageBytes(bytes) {
+  const buf = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  if (buf.length < 4) return null;
+  // PNG
+  if (
+    buf[0] === 0x89 &&
+    buf[1] === 0x50 &&
+    buf[2] === 0x4e &&
+    buf[3] === 0x47
+  ) {
+    return "png";
+  }
+  // JPEG
+  if (buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) {
+    return "jpeg";
+  }
+  // GIF
+  if (buf[0] === 0x47 && buf[1] === 0x49 && buf[2] === 0x46) {
+    return "gif";
+  }
+  // WEBP: RIFF....WEBP
+  if (
+    buf[0] === 0x52 &&
+    buf[1] === 0x49 &&
+    buf[2] === 0x46 &&
+    buf[3] === 0x46 &&
+    buf.length >= 12 &&
+    buf[8] === 0x57 &&
+    buf[9] === 0x45 &&
+    buf[10] === 0x42 &&
+    buf[11] === 0x50
+  ) {
+    return "webp";
+  }
+  // SVG: text starting with optional BOM/whitespace then <svg or <?xml.
+  const head = buf
+    .subarray(0, 256)
+    .toString("utf8")
+    .replace(/^\uFEFF/, "")
+    .trimStart();
+  if (head.startsWith("<svg")) return "svg";
+  if (head.startsWith("<?xml") && /<svg[\s>]/i.test(head)) return "svg";
+  return null;
+}
+
+/**
+ * Sniff magic bytes / SVG start from a file path.
  * @param {string} absPath
  * @returns {string | null}
  */
 export function sniffImageType(absPath) {
   const fd = openSync(absPath, "r");
   try {
-    const buf = Buffer.alloc(16);
-    const n = readSync(fd, buf, 0, 16, 0);
-    if (n < 4) return null;
-    // PNG
-    if (
-      buf[0] === 0x89 &&
-      buf[1] === 0x50 &&
-      buf[2] === 0x4e &&
-      buf[3] === 0x47
-    ) {
-      return "png";
-    }
-    // JPEG
-    if (buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) {
-      return "jpeg";
-    }
-    // GIF
-    if (buf[0] === 0x47 && buf[1] === 0x49 && buf[2] === 0x46) {
-      return "gif";
-    }
-    // WEBP: RIFF....WEBP
-    if (
-      buf[0] === 0x52 &&
-      buf[1] === 0x49 &&
-      buf[2] === 0x46 &&
-      buf[3] === 0x46 &&
-      n >= 12 &&
-      buf[8] === 0x57 &&
-      buf[9] === 0x45 &&
-      buf[10] === 0x42 &&
-      buf[11] === 0x50
-    ) {
-      return "webp";
-    }
-    // SVG: text starting with optional BOM/whitespace then <svg or <?xml
-    const head = buf.subarray(0, n).toString("utf8").replace(/^\uFEFF/, "").trimStart();
-    if (head.startsWith("<svg") || head.startsWith("<?xml")) {
-      // Cheap second check for <?xml...svg
-      if (head.startsWith("<svg")) return "svg";
-      try {
-        const more = Buffer.alloc(256);
-        const m = readSync(fd, more, 0, 256, 0);
-        const text = more.subarray(0, m).toString("utf8");
-        if (/<svg[\s>]/i.test(text)) return "svg";
-      } catch {
-        return null;
-      }
-    }
-    return null;
+    const buf = Buffer.alloc(256);
+    const n = readSync(fd, buf, 0, buf.length, 0);
+    return sniffImageBytes(buf.subarray(0, n));
   } finally {
     closeSync(fd);
   }
+}
+
+/**
+ * Natural pixel size for supported raster image bytes. SVG/unknown return null.
+ * @param {Buffer | Uint8Array} bytes
+ * @returns {{ width: number, height: number } | null}
+ */
+export function imageSizeFromBytes(bytes) {
+  const buf = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  if (buf.length < 24) return null;
+
+  if (
+    buf[0] === 0x89 &&
+    buf[1] === 0x50 &&
+    buf[2] === 0x4e &&
+    buf[3] === 0x47
+  ) {
+    return { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20) };
+  }
+
+  if (buf[0] === 0x47 && buf[1] === 0x49 && buf[2] === 0x46) {
+    return { width: buf.readUInt16LE(6), height: buf.readUInt16LE(8) };
+  }
+
+  if (buf[0] === 0xff && buf[1] === 0xd8) {
+    let i = 2;
+    while (i < buf.length - 8) {
+      if (buf[i] !== 0xff) {
+        i += 1;
+        continue;
+      }
+      const marker = buf[i + 1];
+      if (marker === 0xd8 || marker === 0xd9) {
+        i += 2;
+        continue;
+      }
+      if (marker === 0x00 || marker === 0xff) {
+        i += 1;
+        continue;
+      }
+      if (i + 8 >= buf.length) break;
+      if (
+        (marker >= 0xc0 && marker <= 0xc3) ||
+        (marker >= 0xc5 && marker <= 0xc7) ||
+        (marker >= 0xc9 && marker <= 0xcb) ||
+        (marker >= 0xcd && marker <= 0xcf)
+      ) {
+        return {
+          height: buf.readUInt16BE(i + 5),
+          width: buf.readUInt16BE(i + 7),
+        };
+      }
+      const segLen = buf.readUInt16BE(i + 2);
+      if (segLen < 2) break;
+      i += 2 + segLen;
+    }
+    return null;
+  }
+
+  if (
+    buf.toString("ascii", 0, 4) === "RIFF" &&
+    buf.toString("ascii", 8, 12) === "WEBP" &&
+    buf.length >= 30
+  ) {
+    const chunk = buf.toString("ascii", 12, 16);
+    if (chunk === "VP8X") {
+      return {
+        width: 1 + buf[24] + (buf[25] << 8) + (buf[26] << 16),
+        height: 1 + buf[27] + (buf[28] << 8) + (buf[29] << 16),
+      };
+    }
+    if (chunk === "VP8 ") {
+      return {
+        width: buf.readUInt16LE(26) & 0x3fff,
+        height: buf.readUInt16LE(28) & 0x3fff,
+      };
+    }
+    if (chunk === "VP8L" && buf.length >= 25) {
+      const bits = buf.readUInt32LE(21);
+      return {
+        width: (bits & 0x3fff) + 1,
+        height: ((bits >> 14) & 0x3fff) + 1,
+      };
+    }
+  }
+
+  return null;
 }
 
 /**
@@ -110,6 +215,74 @@ export function sniffImageType(absPath) {
 function extensionMatchesSniff(ext, sniffed) {
   if (sniffed === "jpeg") return ext === ".jpg" || ext === ".jpeg";
   return ext === `.${sniffed}`;
+}
+
+function imageMimeType(type) {
+  if (type === "jpeg") return "image/jpeg";
+  if (type === "svg") return "image/svg+xml";
+  return `image/${type}`;
+}
+
+/**
+ * Read at most one byte beyond the per-file ceiling from one opened file.
+ * Metadata, byte limits, sniffing, sizing, and consumers all bind to this read.
+ * @param {string} absPath
+ * @param {string} context
+ * @param {Record<string, unknown>} details
+ * @returns {Buffer}
+ */
+function readMediaSnapshot(absPath, context, details) {
+  let fd;
+  try {
+    fd = openSync(absPath, MEDIA_OPEN_FLAGS);
+  } catch {
+    throw new OpenPptError(
+      ErrorCodes.MEDIA_MISSING,
+      `Missing local media for ${context}: ${details.src}`,
+      { ...details, resolved: absPath },
+    );
+  }
+
+  try {
+    const mediaStat = fstatSync(fd);
+    if (!mediaStat.isFile()) {
+      throw new OpenPptError(
+        ErrorCodes.MEDIA_MISSING,
+        `Missing local media for ${context}: ${details.src}`,
+        { ...details, resolved: absPath },
+      );
+    }
+
+    const chunks = [];
+    let byteLength = 0;
+    const readCeiling = RESOURCE_LIMITS.mediaBytesPerFile + 1;
+    while (byteLength < readCeiling) {
+      const chunk = Buffer.allocUnsafe(
+        Math.min(64 * 1024, readCeiling - byteLength),
+      );
+      const bytesRead = readSync(fd, chunk, 0, chunk.length, null);
+      if (bytesRead === 0) break;
+      chunks.push(chunk.subarray(0, bytesRead));
+      byteLength += bytesRead;
+    }
+    const bytes = Buffer.concat(chunks, byteLength);
+    assertResourceLimit(
+      bytes.length,
+      RESOURCE_LIMITS.mediaBytesPerFile,
+      "mediaBytesPerFile",
+      context,
+    );
+    return bytes;
+  } catch (err) {
+    if (err instanceof OpenPptError) throw err;
+    throw new OpenPptError(
+      ErrorCodes.MEDIA_MISSING,
+      `Unable to read local media for ${context}: ${details.src}`,
+      { ...details, resolved: absPath },
+    );
+  } finally {
+    closeSync(fd);
+  }
 }
 
 const schemaPath = fileURLToPath(
@@ -213,18 +386,19 @@ export function safeProjectPath(projectRoot, userPath) {
   const candidate = resolve(root, userPath);
   assertInsideRoot(root, candidate, userPath);
   // A symlink inside the project must not point outside it.
-  assertInsideRoot(root, realpathOrSelf(candidate), userPath);
-  return candidate;
+  const canonical = realpathOrSelf(candidate);
+  assertInsideRoot(root, canonical, userPath);
+  return canonical;
 }
 
 /**
  * Structural + schema validation. Fail-closed on OOB bounds and missing media.
  * @param {object} deck
- * @param {{ projectRoot?: string, checkMedia?: boolean }} [options]
- * @returns {{ ok: true, deck: object, colors: Record<string, string> }}
+ * @param {{ projectRoot?: string, checkMedia?: boolean, captureMedia?: boolean }} [options]
+ * @returns {{ ok: true, deck: object, colors: Record<string, string>, mediaSnapshots: Map<string, object> }}
  */
 export function validateDeck(deck, options = {}) {
-  const { projectRoot, checkMedia = true } = options;
+  const { projectRoot, checkMedia = true, captureMedia = false } = options;
   assertDeckResourceLimits(deck);
   // Expand layout groups if caller passed pre-load authoring IR.
   // loadDeck already expands; expandLayouts is idempotent for leaf-only decks.
@@ -273,8 +447,12 @@ export function validateDeck(deck, options = {}) {
   const pageIds = new Set();
   /** @type {Set<string>} */
   const elementIds = new Set();
-  /** @type {Set<string>} */
-  const checkedMedia = new Set();
+  /** @type {Map<string, object>} canonical path to validated snapshot */
+  const checkedMedia = new Map();
+  /** @type {Map<string, object>} IR src to validated snapshot */
+  const validatedMedia = new Map();
+  /** @type {Map<string, object>} operation snapshots returned to renderers */
+  const mediaSnapshots = new Map();
   let totalMediaBytes = 0;
 
   // Resolve and validate colors used on pages
@@ -371,61 +549,65 @@ export function validateDeck(deck, options = {}) {
               "projectRoot is required when checkMedia is true",
             );
           }
-          assertMediaSubtree(el.src);
-          const ext = extname(el.src).toLowerCase();
+          const mediaSrc = el.src;
+          assertMediaSubtree(mediaSrc);
+          const ext = extname(mediaSrc).toLowerCase();
           if (!MEDIA_EXTENSIONS.has(ext)) {
             throw new OpenPptError(
               ErrorCodes.MEDIA_TYPE,
-              `Unsupported media extension for ${ectx}: ${el.src} (allowed: ${[...MEDIA_EXTENSIONS].join(", ")})`,
-              { pageId: page.id, elementId: el.id, src: el.src, ext },
+              `Unsupported media extension for ${ectx}: ${mediaSrc} (allowed: ${[...MEDIA_EXTENSIONS].join(", ")})`,
+              { pageId: page.id, elementId: el.id, src: mediaSrc, ext },
             );
           }
-          const abs = safeProjectPath(projectRoot, el.src);
-          let mediaStat = null;
-          try {
-            mediaStat = statSync(abs);
-          } catch {
-            mediaStat = null;
+          let snapshot = validatedMedia.get(mediaSrc);
+          if (!snapshot) {
+            const abs = safeProjectPath(projectRoot, mediaSrc);
+            snapshot = checkedMedia.get(abs);
+            if (!snapshot) {
+              const details = {
+                pageId: page.id,
+                elementId: el.id,
+                src: mediaSrc,
+              };
+              const bytes = readMediaSnapshot(abs, ectx, details);
+              totalMediaBytes += bytes.length;
+              assertResourceLimit(
+                totalMediaBytes,
+                RESOURCE_LIMITS.mediaBytesPerDeck,
+                "mediaBytesPerDeck",
+                "deck media",
+              );
+              const type = sniffImageBytes(bytes);
+              const naturalSize = imageSizeFromBytes(bytes);
+              snapshot = Object.freeze({
+                path: abs,
+                type,
+                byteLength: bytes.length,
+                naturalSize: naturalSize ? Object.freeze(naturalSize) : null,
+                dataUri: captureMedia && type
+                  ? `data:${imageMimeType(type)};base64,${bytes.toString("base64")}`
+                  : null,
+              });
+              checkedMedia.set(abs, snapshot);
+            }
+            validatedMedia.set(mediaSrc, snapshot);
           }
-          if (!mediaStat?.isFile()) {
-            throw new OpenPptError(
-              ErrorCodes.MEDIA_MISSING,
-              `Missing local media for ${ectx}: ${el.src}`,
-              { pageId: page.id, elementId: el.id, src: el.src, resolved: abs },
-            );
-          }
-          const mediaKey = realpathOrSelf(abs);
-          if (!checkedMedia.has(mediaKey)) {
-            assertResourceLimit(
-              mediaStat.size,
-              RESOURCE_LIMITS.mediaBytesPerFile,
-              "mediaBytesPerFile",
-              ectx,
-            );
-            totalMediaBytes += mediaStat.size;
-            assertResourceLimit(
-              totalMediaBytes,
-              RESOURCE_LIMITS.mediaBytesPerDeck,
-              "mediaBytesPerDeck",
-              "deck media",
-            );
-            checkedMedia.add(mediaKey);
-          }
-          const sniffed = sniffImageType(abs);
+          const sniffed = snapshot.type;
           if (!sniffed) {
             throw new OpenPptError(
               ErrorCodes.MEDIA_TYPE,
-              `Unrecognized image content for ${ectx}: ${el.src}`,
-              { pageId: page.id, elementId: el.id, src: el.src },
+              `Unrecognized image content for ${ectx}: ${mediaSrc}`,
+              { pageId: page.id, elementId: el.id, src: mediaSrc },
             );
           }
           if (!extensionMatchesSniff(ext, sniffed)) {
             throw new OpenPptError(
               ErrorCodes.MEDIA_TYPE,
-              `Extension ${ext} does not match image content (${sniffed}) at ${ectx}: ${el.src}`,
-              { pageId: page.id, elementId: el.id, src: el.src, ext, sniffed },
+              `Extension ${ext} does not match image content (${sniffed}) at ${ectx}: ${mediaSrc}`,
+              { pageId: page.id, elementId: el.id, src: mediaSrc, ext, sniffed },
             );
           }
+          if (captureMedia) mediaSnapshots.set(mediaSrc, snapshot);
         }
       } else if (el.type === "chart") {
         if (!el.series || !Array.isArray(el.series) || el.series.length === 0) {
@@ -543,7 +725,7 @@ export function validateDeck(deck, options = {}) {
     }
   }
 
-  return { ok: true, deck, colors };
+  return { ok: true, deck, colors, mediaSnapshots };
 }
 
 /**

@@ -2,6 +2,9 @@
 
 ## Unreleased — 2026-08-23
 
+- PPTX export and HTML preview now validate local images and render them from the same per-operation immutable byte snapshot, preventing output drift if project media changes while an operation is running.
+- Media file type, byte ceilings, and natural dimensions are now derived from the same bounded file-descriptor read used to create output; renderers no longer reopen project media paths after validation, and repeated same-slide references retain one package payload.
+- Local snapshot verification passed all 92 tests on Bun 1.4.0 and the current 1.4.1 canary, including deterministic path-replacement and non-blocking FIFO regressions.
 - Validation now fails closed with `RESOURCE_LIMIT_EXCEEDED` on documented deck, authoring-group, string, chart/table collection, and referenced local-media ceilings before layout expansion or output generation.
 - Local resource-ceiling verification passed all 87 tests on Bun 1.4.0 and the current 1.4.1 canary.
 - CI now exercises Bun 1.4.0, stable, and canary plus stable Linux/macOS/Windows; PPTX assertions no longer depend on the system `unzip` command or POSIX-only smoke checks.

@@ -116,6 +116,8 @@ Agents may nest `type: "group"` instead of hand-computing every `[x,y,w,h]`.
 - All `image.src` values must use canonical `media/...` paths (forward slashes; no empty, `.` or `..` segments).
 - File must exist, be a regular file, and pass path jail (no symlink escape).
 - Extension must match sniffed content (e.g. `.png` must be a real PNG).
+- PPTX export and HTML preview snapshot each referenced local image once per operation. Path policy, byte limits, type sniffing, image sizing, and emitted media all use that same snapshot; project media paths are not reopened after validation.
+- Standalone validation and QA report the media state observed during that call. Export and preview always capture and validate their own media snapshots.
 - Remote URLs are not accepted on the default export path.
 
 ## Chart series

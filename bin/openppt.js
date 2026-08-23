@@ -286,7 +286,6 @@ async function main() {
         console.error("preview requires -o <out.html>");
         process.exit(2);
       }
-      validateDeck(deck, { projectRoot, checkMedia: true });
       const { writePreviewHtml } = await import("../src/preview.js");
       const out = writePreviewHtml(deck, projectRoot, opts.output, {
         force: opts.force,
