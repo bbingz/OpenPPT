@@ -18,6 +18,7 @@ import {
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { OpenPptError, ErrorCodes } from "./errors.js";
+import { writeDeckFileAtomic } from "./project-write.js";
 import { validateDeck } from "./validate.js";
 
 const rootDir = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -271,8 +272,8 @@ export function projectFromOutline(mdPath, outDir, options = {}) {
   const deck = outlineToDeck(outline, { theme });
   validateDeck(JSON.parse(JSON.stringify(deck)), { checkMedia: false });
   mkdirSync(join(dest, "media"), { recursive: true });
-  writeFileSync(deckPath, `${JSON.stringify(deck, null, 2)}\n`, "utf8");
   const keep = join(dest, "media", ".gitkeep");
   if (!existsSync(keep)) writeFileSync(keep, "", "utf8");
+  writeDeckFileAtomic(deckPath, `${JSON.stringify(deck, null, 2)}\n`, { force });
   return { deckPath, pageCount: deck.pages.length, title: deck.title };
 }

@@ -12,6 +12,8 @@ export {
   safeProjectPath,
   assertMediaSubtree,
   sniffImageType,
+  sniffImageBytes,
+  imageSizeFromBytes,
   clearSchemaValidatorCache,
 } from "./validate.js";
 export { compileToPptx, compileToBuffer } from "./compile.js";

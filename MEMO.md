@@ -4,6 +4,11 @@
 
 ### 2026-08-23
 
+- [安全] PPTX import now applies archive, raw-entry, declared-size, actual-inflate, and pre-staging media ceilings; repeated relationships reuse one imported media output. See `CHANGELOG.md`.
+- [修复] Validation now returns typed external-page errors, always enforces canonical media paths, rejects unsafe table-width normalization, and does not mutate authored groups; downstream compile, preview, and QA use the normalized result.
+- [修复] Image path inspection shares bounded snapshot I/O, and `init` / `from-outline` use atomic no-clobber deck writes.
+- [文档] Agent guidance now uses safe alternative creation paths and documents `--skeleton`, normalized schema versus authored groups, colors-only themes, real template tokens, shipped charts, and preview limits.
+- [验证] The full 115-test suite and production dependency-audit gate pass on the current Bun 1.4.1 canary; see `CHANGELOG.md`.
 - [新增] Added a source-grounded SVG/PNG architecture diagram for the OpenPPT workflow; see `README.md` and `CHANGELOG.md`.
 - [修复] The package-install integration smoke now allows 30 seconds for cold Windows dependency resolution instead of inheriting Bun's 5-second unit-test timeout.
 - [安全] Added a fail-closed production audit gate for the exact two reviewed `image-size@1.2.1` advisories; see `CHANGELOG.md` and `docs/BACKLOG.md`.

@@ -37,12 +37,12 @@ Prefer absolute paths in the final reply.
 
 - **From scratch:** copy a skeleton under `templates/` (see below) or write IR by hand.
 - **From outline:** one page per major section; cover + TOC + body + final for formal decks.
-- **Style:** copy colors from `themes/default.json` into `theme.colors` (template only — not auto-loaded).
+- **Style:** copy only the top-level `colors` value from `themes/default.json` into `deck.theme.colors`; do not copy the theme file's `id` or `name` (template only — not auto-loaded).
 
 ### 2. Write IR
 
-- Read **`schema/openppt-ir.schema.json`** (source of truth).
-- Optional short guide: `docs/IR.md`.
+- Read **`schema/openppt-ir.schema.json`** as the source of truth for normalized leaf IR.
+- Read `docs/IR.md` when authoring groups: `group` is authoring-only and must pass through `loadDeck` / `validateDeck`, which expand it before leaf-schema validation.
 - Rules agents forget most often:
   - `"version": "openppt-1"`
   - Bounds `[x,y,w,h]` in **CSS pixels**, must fit `size`
@@ -52,8 +52,8 @@ Prefer absolute paths in the final reply.
   - Charts: `type: "chart"`, `chartType` ∈ bar|line|pie|doughnut|area, `series[{name,values,labels?}]`
   - Tables: `type: "table"`, `rows: [["H1","H2"],["a","b"]]`, optional `header: true`, `colW`
   - Text links: `"href": "https://..."` on text elements
-  - **Layout groups (prefer for multi-block pages):** `type: "group"`, `layout: "stack"|"row"|"grid"|"layer"`, `bounds`, `gap?`, `children` with `height`/`width`/`flex` — `layer` = card overlay (bg + content). See `fixtures/layout-demo/`, `demos/sspai-113139/`, `docs/IR.md`
-  - Themes to copy: `themes/default.json`, `dark.json`, `magazine.json`, `report.json`
+  - **Layout groups (prefer for multi-block pages):** authoring-only `type: "group"`, `layout: "stack"|"row"|"grid"|"layer"`, `bounds`, `gap?`, `children` with `height`/`width`/`flex` — `layer` = card overlay (bg + content). See `fixtures/layout-demo/`, `demos/sspai-113139/`, `docs/IR.md`
+  - Theme color sources: the top-level `colors` value in `themes/default.json`, `dark.json`, `magazine.json`, or `report.json`
   - Theme colors: `"$primary"` style tokens under `theme.colors`
   - First read: `docs/AGENT.md` (then schema if needed)
   - Multi-file: `pages: ["pages/cover.json", ...]` expanded at load
@@ -62,11 +62,16 @@ Prefer absolute paths in the final reply.
 ### 3. Scaffold / outline (optional)
 
 ```bash
-bun "$OPENPPT_ROOT/bin/openppt.js" init /abs/path/project --theme magazine --title "Deck"
-bun "$OPENPPT_ROOT/bin/openppt.js" from-outline /abs/path/outline.md -o /abs/path/project --force
+# choose one creation route for a new project
+bun "$OPENPPT_ROOT/bin/openppt.js" init /abs/path/project --skeleton --theme magazine --title "Deck"
+# OR
+bun "$OPENPPT_ROOT/bin/openppt.js" from-outline /abs/path/outline.md -o /abs/path/outline-project
 ```
 
 Outline format: `# Title`, `## Section`, `- bullet` lines.
+`init --skeleton` creates four pages; without it, `init` creates a two-page
+starter. `--force` replaces an existing `deck.json`, so never run the two
+creation commands against the same directory unless replacement is intended.
 
 ### 4. Validate, QA, export, preview
 
@@ -77,6 +82,10 @@ bun "$OPENPPT_ROOT/bin/openppt.js" qa       /abs/path/deck.json --fail-on med
 bun "$OPENPPT_ROOT/bin/openppt.js" export  /abs/path/deck.json -o /abs/path/deck.pptx --force
 bun "$OPENPPT_ROOT/bin/openppt.js" preview /abs/path/deck.json -o /abs/path/preview.html --force
 ```
+
+Preview is an offline structural approximation, not pixel-faithful PowerPoint
+rendering; charts are placeholders. Inspect the exported PPTX for final visual
+QA.
 
 Import existing PPTX (lossy):
 
@@ -100,7 +109,12 @@ Copy from the repo (paths relative to OpenPPT root):
 | Body | `templates/pages/body.json` | |
 | Final | `templates/pages/final.json` | |
 
-Replace placeholder strings (`{{TITLE}}`, etc.) with real copy; keep bounds and `$` theme tokens unless redesigning.
+Replace the actual placeholder strings with real copy: `{{DECK_TITLE}}`,
+`{{TITLE}}`, `{{SUBTITLE}}`, `{{FOOTER}}`, `{{TOC_1}}`–`{{TOC_4}}`,
+`{{SECTION_TITLE}}`, `{{BODY}}`, `{{CALLOUT}}`, `{{CLOSING}}`, `{{CTA}}`, and
+`{{CONTACT}}`. `init --skeleton --title` fills the deck title and `{{TITLE}}`;
+the remaining tokens still need content. Keep bounds and `$` theme tokens
+unless redesigning.
 
 ### 6. Delivery
 

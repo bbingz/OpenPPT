@@ -23,6 +23,10 @@ export const RESOURCE_LIMITS = Object.freeze({
   tableColumnsPerRow: 64,
   tableCellsPerElement: 8192,
   tableCellsPerDeck: 32768,
+  pptxArchiveBytes: 192 * MiB,
+  pptxEntries: 4096,
+  pptxEntryUncompressedBytes: 32 * MiB,
+  pptxUncompressedBytes: 256 * MiB,
   mediaBytesPerFile: 32 * MiB,
   mediaBytesPerDeck: 128 * MiB,
 });

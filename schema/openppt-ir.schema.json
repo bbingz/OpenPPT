@@ -177,7 +177,7 @@
         "src": {
           "type": "string",
           "minLength": 1,
-          "pattern": "^media/",
+          "pattern": "^media/(?!\\.{1,2}(?:/|$))[^/\\\\]+(?:/(?!\\.{1,2}(?:/|$))[^/\\\\]+)*$",
           "description": "Project-relative path under media/ only. Extension must match content (png/jpeg/gif/webp/svg). No remote URLs."
         },
         "fit": {

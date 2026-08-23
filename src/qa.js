@@ -220,11 +220,11 @@ export function analyzeLayout(deck) {
  * @returns {{ ok: boolean, issues: Array<object>, failOn: string }}
  */
 export function qaDeck(deck, options = {}) {
-  validateDeck(deck, {
+  const { deck: validatedDeck } = validateDeck(deck, {
     projectRoot: options.projectRoot,
     checkMedia: options.checkMedia !== false,
   });
-  const result = analyzeLayout(deck);
+  const result = analyzeLayout(validatedDeck);
   const failOn = options.failOn || "high";
   const ok = !issuesFailThreshold(result.issues, failOn);
   return { ...result, ok, failOn };

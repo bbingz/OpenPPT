@@ -39,8 +39,14 @@ const MEDIA_OPEN_FLAGS =
  * @param {string} src
  */
 export function assertMediaSubtree(src) {
-  const normalized = src.replace(/\\/g, "/");
-  const segments = normalized.split("/");
+  if (typeof src !== "string" || src.includes("\\")) {
+    throw new OpenPptError(
+      ErrorCodes.MEDIA_MISSING,
+      `Image src must use a canonical media/ path: ${String(src)}`,
+      { src },
+    );
+  }
+  const segments = src.split("/");
   if (
     segments[0] === "media" &&
     segments.length > 1 &&
@@ -111,14 +117,9 @@ export function sniffImageBytes(bytes) {
  * @returns {string | null}
  */
 export function sniffImageType(absPath) {
-  const fd = openSync(absPath, "r");
-  try {
-    const buf = Buffer.alloc(256);
-    const n = readSync(fd, buf, 0, buf.length, 0);
-    return sniffImageBytes(buf.subarray(0, n));
-  } finally {
-    closeSync(fd);
-  }
+  return sniffImageBytes(
+    readMediaSnapshot(absPath, "image inspection", { src: absPath }),
+  );
 }
 
 /**
@@ -400,13 +401,37 @@ export function safeProjectPath(projectRoot, userPath) {
 export function validateDeck(deck, options = {}) {
   const { projectRoot, checkMedia = true, captureMedia = false } = options;
   assertDeckResourceLimits(deck);
+  const externalPageIndex = Array.isArray(deck?.pages)
+    ? deck.pages.findIndex((page) => typeof page === "string")
+    : -1;
+  if (externalPageIndex >= 0) {
+    throw new OpenPptError(
+      ErrorCodes.IO,
+      `pages[${externalPageIndex}] is an external page path; call loadDeck() before validateDeck()`,
+      { pageIndex: externalPageIndex, pagePath: deck.pages[externalPageIndex] },
+    );
+  }
   // Expand layout groups if caller passed pre-load authoring IR.
   // loadDeck already expands; expandLayouts is idempotent for leaf-only decks.
   if (deckHasGroups(deck)) {
-    const expanded = expandLayouts(deck);
-    deck.pages = expanded.pages;
+    deck = expandLayouts(deck);
   }
   assertDeckResourceLimits(deck);
+
+  // Canonical media paths are an IR invariant. checkMedia only controls local
+  // file I/O and byte/type inspection, never path normalization.
+  if (Array.isArray(deck?.pages)) {
+    for (const page of deck.pages) {
+      if (!page || typeof page !== "object" || !Array.isArray(page.elements)) {
+        continue;
+      }
+      for (const element of page.elements) {
+        if (element?.type === "image" && typeof element.src === "string") {
+          assertMediaSubtree(element.src);
+        }
+      }
+    }
+  }
 
   const validate = getSchemaValidator();
   const schemaOk = validate(deck);
@@ -542,6 +567,7 @@ export function validateDeck(deck, options = {}) {
         if (el.fill) resolveColor(el.fill, colors, `${ectx}.fill`);
         if (el.lineColor) resolveColor(el.lineColor, colors, `${ectx}.lineColor`);
       } else if (el.type === "image") {
+        const mediaSrc = el.src;
         if (checkMedia) {
           if (!projectRoot) {
             throw new OpenPptError(
@@ -549,8 +575,6 @@ export function validateDeck(deck, options = {}) {
               "projectRoot is required when checkMedia is true",
             );
           }
-          const mediaSrc = el.src;
-          assertMediaSubtree(mediaSrc);
           const ext = extname(mediaSrc).toLowerCase();
           if (!MEDIA_EXTENSIONS.has(ext)) {
             throw new OpenPptError(
@@ -680,12 +704,36 @@ export function validateDeck(deck, options = {}) {
             { pageId: page.id, elementId: el.id },
           );
         }
-        if (el.colW?.some((width) => !Number.isFinite(width))) {
-          throw new OpenPptError(
-            ErrorCodes.SCHEMA,
-            `colW must contain finite numbers at ${ectx}`,
-            { pageId: page.id, elementId: el.id },
-          );
+        if (el.colW) {
+          if (
+            el.colW.some(
+              (width) => !Number.isFinite(width) || width <= 0,
+            )
+          ) {
+            throw new OpenPptError(
+              ErrorCodes.SCHEMA,
+              `colW must contain positive finite numbers at ${ectx}`,
+              { pageId: page.id, elementId: el.id },
+            );
+          }
+          const colCount = Math.max(...widths);
+          const weights = el.colW.slice(0, colCount);
+          while (weights.length < colCount) weights.push(1);
+          const sum = weights.reduce((total, width) => total + width, 0);
+          if (!Number.isFinite(sum) || sum <= 0) {
+            throw new OpenPptError(
+              ErrorCodes.SCHEMA,
+              `colW total must be a positive finite number at ${ectx}`,
+              { pageId: page.id, elementId: el.id, colW: el.colW },
+            );
+          }
+          if (weights.some((width) => width / sum <= 0)) {
+            throw new OpenPptError(
+              ErrorCodes.SCHEMA,
+              `colW normalization must produce positive finite widths at ${ectx}`,
+              { pageId: page.id, elementId: el.id, colW: el.colW },
+            );
+          }
         }
         if (el.borderColor) {
           resolveColor(el.borderColor, colors, `${ectx}.borderColor`);

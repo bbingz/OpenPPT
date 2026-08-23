@@ -4,37 +4,15 @@ import {
   unlinkSync,
   renameSync,
   realpathSync,
-  readFileSync,
 } from "node:fs";
 import { dirname, resolve, join } from "node:path";
 import { randomBytes } from "node:crypto";
 import PptxGenJS from "pptxgenjs";
-import {
-  imageSizeFromBytes,
-  resolveColor,
-  validateDeck,
-} from "./validate.js";
+import { resolveColor, validateDeck } from "./validate.js";
 import { OpenPptError, ErrorCodes } from "./errors.js";
 
 /** CSS px → inches at 96dpi (matches common web/PPT mapping). */
 const PX_PER_IN = 96;
-
-/**
- * Natural pixel size for local raster images (PNG/JPEG/GIF/WEBP).
- * pptxgenjs cover/contain sizing uses options.w/h as *image aspect*, not natural
- * pixels — we need this to pass a correct aspect ratio. Returns null for SVG/unknown.
- * @param {string} absPath
- * @returns {{ width: number, height: number } | null}
- */
-export function readImageSize(absPath) {
-  let bytes;
-  try {
-    bytes = readFileSync(absPath);
-  } catch {
-    return null;
-  }
-  return imageSizeFromBytes(bytes);
-}
 
 /**
  * pptxgenjs `sizing.cover|contain` treats options.w/h as the *source image aspect*,
@@ -293,7 +271,7 @@ function buildPresentation(deck, colors, mediaSnapshots) {
           const weights = el.colW.slice(0, colCount);
           while (weights.length < colCount) weights.push(1);
           const sum = weights.reduce((a, b) => a + b, 0);
-          colWIn = weights.map((w) => (box.w * w) / sum);
+          colWIn = weights.map((w) => box.w * (w / sum));
         } else {
           colWIn = Array.from({ length: colCount }, () => box.w / colCount);
         }
@@ -398,7 +376,7 @@ function realOrResolve(p) {
  */
 export async function compileToPptx(deck, outputPath, options) {
   const { projectRoot, force = false, sourcePath } = options;
-  const { colors, mediaSnapshots } = validateDeck(deck, {
+  const { deck: validatedDeck, colors, mediaSnapshots } = validateDeck(deck, {
     projectRoot,
     checkMedia: true,
     captureMedia: true,
@@ -426,7 +404,7 @@ export async function compileToPptx(deck, outputPath, options) {
   }
 
   mkdirSync(dirname(out), { recursive: true });
-  const pptx = buildPresentation(deck, colors, mediaSnapshots);
+  const pptx = buildPresentation(validatedDeck, colors, mediaSnapshots);
   // pptxgenjs appends ".pptx" when the path does not already end with it.
   const tmp = join(
     dirname(out),
@@ -457,7 +435,7 @@ export async function compileToPptx(deck, outputPath, options) {
     throw new OpenPptError(ErrorCodes.EXPORT, `Export produced no file at ${out}`);
   }
 
-  return { outputPath: out, pageCount: deck.pages.length };
+  return { outputPath: out, pageCount: validatedDeck.pages.length };
 }
 
 /**
@@ -468,12 +446,12 @@ export async function compileToPptx(deck, outputPath, options) {
  */
 export async function compileToBuffer(deck, options) {
   const { projectRoot } = options;
-  const { colors, mediaSnapshots } = validateDeck(deck, {
+  const { deck: validatedDeck, colors, mediaSnapshots } = validateDeck(deck, {
     projectRoot,
     checkMedia: true,
     captureMedia: true,
   });
-  const pptx = buildPresentation(deck, colors, mediaSnapshots);
+  const pptx = buildPresentation(validatedDeck, colors, mediaSnapshots);
   const data = await pptx.write({ outputType: "nodebuffer" });
   return Buffer.isBuffer(data) ? data : Buffer.from(data);
 }

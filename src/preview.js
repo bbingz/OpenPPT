@@ -36,13 +36,13 @@ function cssColor(hex) {
  * @returns {string} HTML document
  */
 export function renderPreviewHtml(deck, projectRoot) {
-  const { colors, mediaSnapshots } = validateDeck(deck, {
+  const { deck: validatedDeck, colors, mediaSnapshots } = validateDeck(deck, {
     projectRoot,
     checkMedia: true,
     captureMedia: true,
   });
-  const [cw, ch] = deck.size;
-  const pagesHtml = deck.pages
+  const [cw, ch] = validatedDeck.size;
+  const pagesHtml = validatedDeck.pages
     .map((page, pi) => {
       let bg = "#ffffff";
       if (page.background?.color) {
@@ -145,7 +145,7 @@ export function renderPreviewHtml(deck, projectRoot) {
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>${escapeHtml(deck.title || "OpenPPT preview")}</title>
+<title>${escapeHtml(validatedDeck.title || "OpenPPT preview")}</title>
 <style>
   body { margin:0; font-family: system-ui, sans-serif; background:#0f172a; color:#e2e8f0; }
   h1 { font-size:16px; font-weight:600; padding:16px 20px; margin:0; border-bottom:1px solid #1e293b; }
@@ -162,7 +162,7 @@ export function renderPreviewHtml(deck, projectRoot) {
 </style>
 </head>
 <body>
-  <h1>OpenPPT preview — ${escapeHtml(deck.title || "untitled")} (${cw}×${ch})</h1>
+  <h1>OpenPPT preview — ${escapeHtml(validatedDeck.title || "untitled")} (${cw}×${ch})</h1>
   <main>
 ${pagesHtml}
   </main>

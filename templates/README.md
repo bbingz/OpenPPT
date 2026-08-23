@@ -8,7 +8,9 @@ Skeletons bound to the default theme tokens (`primary`, `accent`, `text`, `muted
 |---|---|
 | [`pitch-skeleton/deck.json`](pitch-skeleton/deck.json) | cover · toc · body · final |
 
-Replace `{{PLACEHOLDERS}}` then:
+Replace the actual tokens — `{{DECK_TITLE}}`, `{{TITLE}}`, `{{SUBTITLE}}`,
+`{{FOOTER}}`, `{{TOC_1}}`–`{{TOC_4}}`, `{{SECTION_TITLE}}`, `{{BODY}}`,
+`{{CALLOUT}}`, `{{CLOSING}}`, `{{CTA}}`, and `{{CONTACT}}` — then:
 
 ```bash
 bun bin/openppt.js validate templates/pitch-skeleton/deck.json

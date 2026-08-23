@@ -4,13 +4,17 @@
  */
 
 import {
+  closeSync,
+  constants,
+  fstatSync,
   mkdirSync,
   writeFileSync,
   existsSync,
-  readFileSync,
   lstatSync,
   linkSync,
   mkdtempSync,
+  openSync,
+  readSync,
   renameSync,
   rmSync,
   unlinkSync,
@@ -20,10 +24,21 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve, basename, extname } from "node:path";
 import JSZip from "jszip";
 import { OpenPptError, ErrorCodes } from "./errors.js";
+import {
+  assertResourceLimit,
+  RESOURCE_LIMITS,
+} from "./resource-limits.js";
 import { validateDeck } from "./validate.js";
 
 /** EMUs per CSS px at 96dpi (914400 EMU/in ÷ 96). */
 const EMU_PER_PX = 9525;
+const PPTX_OPEN_FLAGS =
+  constants.O_RDONLY |
+  (process.platform === "win32"
+    ? 0
+    : (constants.O_NOFOLLOW || 0) | (constants.O_NONBLOCK || 0));
+const ZIP_EOCD_SIGNATURE = 0x06054b50;
+const ZIP_CENTRAL_SIGNATURE = 0x02014b50;
 
 /**
  * @param {number} emu
@@ -289,14 +304,234 @@ function parseSlide(slideXml, relIdToMediaPath, relIdToChartXml, pageIndex) {
   return { background, elements };
 }
 
+/** Read one regular PPTX file without allocating beyond the archive ceiling. */
+function readPptxSnapshot(absPptx) {
+  let fd;
+  try {
+    fd = openSync(absPptx, PPTX_OPEN_FLAGS);
+  } catch {
+    throw new OpenPptError(ErrorCodes.IO, `PPTX not found or unreadable: ${absPptx}`);
+  }
+
+  try {
+    const stat = fstatSync(fd);
+    if (!stat.isFile()) {
+      throw new OpenPptError(ErrorCodes.IO, `PPTX is not a regular file: ${absPptx}`);
+    }
+    assertResourceLimit(
+      stat.size,
+      RESOURCE_LIMITS.pptxArchiveBytes,
+      "pptxArchiveBytes",
+      "PPTX archive",
+    );
+
+    const chunks = [];
+    let byteLength = 0;
+    const readCeiling = RESOURCE_LIMITS.pptxArchiveBytes + 1;
+    while (byteLength < readCeiling) {
+      const chunk = Buffer.allocUnsafe(
+        Math.min(64 * 1024, readCeiling - byteLength),
+      );
+      const bytesRead = readSync(fd, chunk, 0, chunk.length, null);
+      if (bytesRead === 0) break;
+      chunks.push(chunk.subarray(0, bytesRead));
+      byteLength += bytesRead;
+    }
+    assertResourceLimit(
+      byteLength,
+      RESOURCE_LIMITS.pptxArchiveBytes,
+      "pptxArchiveBytes",
+      "PPTX archive",
+    );
+    return Buffer.concat(chunks, byteLength);
+  } catch (err) {
+    if (err instanceof OpenPptError) throw err;
+    throw new OpenPptError(
+      ErrorCodes.IO,
+      `Unable to read PPTX: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  } finally {
+    closeSync(fd);
+  }
+}
+
 /**
- * @param {import('jszip')} zip
- * @param {string} path
+ * Parse the classic ZIP central directory before JSZip allocates entry objects.
+ * ZIP64 and multi-disk inputs exceed this importer's bounded, local-file scope.
+ * @param {Buffer} archive
  */
-async function readZipText(zip, path) {
-  const f = zip.file(path);
-  if (!f) return null;
-  return f.async("string");
+function assertZipCentralDirectoryLimits(archive) {
+  const minimumEocd = 22;
+  const searchStart = Math.max(0, archive.length - minimumEocd - 0xffff);
+  let eocd = -1;
+  for (let offset = archive.length - minimumEocd; offset >= searchStart; offset -= 1) {
+    if (archive.readUInt32LE(offset) !== ZIP_EOCD_SIGNATURE) continue;
+    const commentBytes = archive.readUInt16LE(offset + 20);
+    if (offset + minimumEocd + commentBytes === archive.length) {
+      eocd = offset;
+      break;
+    }
+  }
+  if (eocd < 0) {
+    throw new OpenPptError(ErrorCodes.IO, "Invalid PPTX ZIP end record");
+  }
+
+  const disk = archive.readUInt16LE(eocd + 4);
+  const centralDisk = archive.readUInt16LE(eocd + 6);
+  const entriesOnDisk = archive.readUInt16LE(eocd + 8);
+  const entryCount = archive.readUInt16LE(eocd + 10);
+  const centralBytes = archive.readUInt32LE(eocd + 12);
+  const centralOffset = archive.readUInt32LE(eocd + 16);
+  if (
+    disk !== 0 ||
+    centralDisk !== 0 ||
+    entriesOnDisk !== entryCount ||
+    entryCount === 0xffff ||
+    centralBytes === 0xffffffff ||
+    centralOffset === 0xffffffff
+  ) {
+    throw new OpenPptError(
+      ErrorCodes.IO,
+      "ZIP64 and multi-disk PPTX archives are not supported",
+    );
+  }
+  assertResourceLimit(
+    entryCount,
+    RESOURCE_LIMITS.pptxEntries,
+    "pptxEntries",
+    "PPTX central directory",
+  );
+  if (centralOffset + centralBytes !== eocd) {
+    throw new OpenPptError(ErrorCodes.IO, "Invalid PPTX ZIP central directory bounds");
+  }
+
+  let cursor = centralOffset;
+  let totalUncompressed = 0;
+  for (let index = 0; index < entryCount; index += 1) {
+    if (
+      cursor + 46 > eocd ||
+      archive.readUInt32LE(cursor) !== ZIP_CENTRAL_SIGNATURE
+    ) {
+      throw new OpenPptError(ErrorCodes.IO, "Invalid PPTX ZIP central directory entry");
+    }
+    const compressedBytes = archive.readUInt32LE(cursor + 20);
+    const uncompressedBytes = archive.readUInt32LE(cursor + 24);
+    const nameBytes = archive.readUInt16LE(cursor + 28);
+    const extraBytes = archive.readUInt16LE(cursor + 30);
+    const commentBytes = archive.readUInt16LE(cursor + 32);
+    const startDisk = archive.readUInt16LE(cursor + 34);
+    if (
+      compressedBytes === 0xffffffff ||
+      uncompressedBytes === 0xffffffff ||
+      startDisk !== 0
+    ) {
+      throw new OpenPptError(
+        ErrorCodes.IO,
+        "ZIP64 and multi-disk PPTX entries are not supported",
+      );
+    }
+    assertResourceLimit(
+      uncompressedBytes,
+      RESOURCE_LIMITS.pptxEntryUncompressedBytes,
+      "pptxEntryUncompressedBytes",
+      `PPTX entry ${index + 1}`,
+    );
+    totalUncompressed += uncompressedBytes;
+    assertResourceLimit(
+      totalUncompressed,
+      RESOURCE_LIMITS.pptxUncompressedBytes,
+      "pptxUncompressedBytes",
+      "PPTX archive",
+    );
+    cursor += 46 + nameBytes + extraBytes + commentBytes;
+  }
+  if (cursor !== eocd) {
+    throw new OpenPptError(ErrorCodes.IO, "Invalid PPTX ZIP central directory size");
+  }
+}
+
+/**
+ * Create a cached reader that enforces actual inflate limits while streaming.
+ * @param {import('jszip')} zip
+ * @param {{ entryBytes?: number, totalBytes?: number }} [limits]
+ */
+export function createBoundedZipReader(zip, limits = {}) {
+  const entryBytes =
+    limits.entryBytes ?? RESOURCE_LIMITS.pptxEntryUncompressedBytes;
+  const totalBytes = limits.totalBytes ?? RESOURCE_LIMITS.pptxUncompressedBytes;
+  /** @type {Map<string, Buffer>} */
+  const cache = new Map();
+  let totalInflatedBytes = 0;
+
+  /** @param {string} path */
+  return async function readZipEntry(path) {
+    if (cache.has(path)) return cache.get(path);
+    const entry = zip.file(path);
+    if (!entry) return null;
+
+    let bytes;
+    try {
+      bytes = await new Promise((resolveEntry, rejectEntry) => {
+        const chunks = [];
+        let byteLength = 0;
+        let settled = false;
+        const stream = entry.nodeStream("nodebuffer");
+
+        const fail = (err) => {
+          if (settled) return;
+          settled = true;
+          stream.pause();
+          stream.destroy();
+          rejectEntry(err);
+        };
+        stream.on("data", (chunk) => {
+          if (settled) return;
+          const part = Buffer.from(chunk);
+          byteLength += part.length;
+          try {
+            assertResourceLimit(
+              byteLength,
+              entryBytes,
+              "pptxEntryUncompressedBytes",
+              `PPTX entry ${path}`,
+            );
+            assertResourceLimit(
+              totalInflatedBytes + byteLength,
+              totalBytes,
+              "pptxUncompressedBytes",
+              "PPTX archive",
+            );
+          } catch (err) {
+            fail(err);
+            return;
+          }
+          chunks.push(part);
+        });
+        stream.on("error", (err) => fail(err));
+        stream.on("end", () => {
+          if (settled) return;
+          settled = true;
+          resolveEntry(Buffer.concat(chunks, byteLength));
+        });
+      });
+    } catch (err) {
+      if (err instanceof OpenPptError) throw err;
+      throw new OpenPptError(
+        ErrorCodes.IO,
+        `Unable to inflate PPTX entry ${path}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+
+    totalInflatedBytes += bytes.length;
+    cache.set(path, bytes);
+    return bytes;
+  };
+}
+
+/** @param {(path: string) => Promise<Buffer | null>} readZipEntry @param {string} path */
+async function readZipText(readZipEntry, path) {
+  const bytes = await readZipEntry(path);
+  return bytes ? bytes.toString("utf8") : null;
 }
 
 /**
@@ -447,15 +682,25 @@ export async function importPptx(pptxPath, outDir, options = {}) {
   }
   const dest = resolve(outDir);
 
-  const buf = readFileSync(absPptx);
-  const zip = await JSZip.loadAsync(buf);
+  const buf = readPptxSnapshot(absPptx);
+  assertZipCentralDirectoryLimits(buf);
+  let zip;
+  try {
+    zip = await JSZip.loadAsync(buf);
+  } catch (err) {
+    throw new OpenPptError(
+      ErrorCodes.IO,
+      `Unable to open PPTX ZIP: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+  const readZipEntry = createBoundedZipReader(zip);
   const warnings = [
     "import is lossy: masters/animations/fonts not reconstructed; charts/tables are best-effort",
   ];
 
   // Slide size from presentation.xml sldSz
   let size = [960, 540];
-  const presXml = await readZipText(zip, "ppt/presentation.xml");
+  const presXml = await readZipText(readZipEntry, "ppt/presentation.xml");
   if (presXml) {
     const sldSz = presXml.match(/<p:sldSz[^>]*cx="(\d+)"[^>]*cy="(\d+)"/);
     if (sldSz) {
@@ -472,6 +717,13 @@ export async function importPptx(pptxPath, outDir, options = {}) {
       return na - nb;
     });
 
+  assertResourceLimit(
+    slidePaths.length,
+    RESOURCE_LIMITS.pagesPerDeck,
+    "pagesPerDeck",
+    "PPTX slides",
+  );
+
   if (slidePaths.length === 0) {
     throw new OpenPptError(ErrorCodes.IO, "No slides found in PPTX");
   }
@@ -480,18 +732,21 @@ export async function importPptx(pptxPath, outDir, options = {}) {
   const pages = [];
   /** @type {{ relativePath: string, data: Buffer }[]} */
   const mediaOutputs = [];
+  /** @type {Map<string, { relativePath: string, data: Buffer }>} */
+  const mediaTargetToOutput = new Map();
   let mediaIndex = 0;
+  let totalImportedMediaBytes = 0;
 
   for (let si = 0; si < slidePaths.length; si += 1) {
     const slidePath = slidePaths[si];
-    const slideXml = await readZipText(zip, slidePath);
+    const slideXml = await readZipText(readZipEntry, slidePath);
     if (!slideXml) continue;
 
     // Relationships for images + charts
     const relPath = slidePath
       .replace("ppt/slides/", "ppt/slides/_rels/")
       .replace(/\.xml$/, ".xml.rels");
-    const relXml = (await readZipText(zip, relPath)) || "";
+    const relXml = (await readZipText(readZipEntry, relPath)) || "";
     /** @type {Map<string, string>} */
     const relIdToMedia = new Map();
     /** @type {Map<string, string>} */
@@ -511,7 +766,7 @@ export async function importPptx(pptxPath, outDir, options = {}) {
         target = `ppt/slides/${target}`;
       }
       if (/charts\/chart\d+\.xml$/i.test(target)) {
-        const chartXml = await readZipText(zip, target);
+        const chartXml = await readZipText(readZipEntry, target);
         if (chartXml) relIdToChartXml.set(rId, chartXml);
         continue;
       }
@@ -523,11 +778,31 @@ export async function importPptx(pptxPath, outDir, options = {}) {
         // not an image relationship (could be notes, etc.)
         continue;
       }
-      const localName = `img-${++mediaIndex}${ext}`;
-      const relMedia = `media/${localName}`;
-      const bytes = await mediaFile.async("nodebuffer");
-      mediaOutputs.push({ relativePath: relMedia, data: bytes });
-      relIdToMedia.set(rId, relMedia);
+      let mediaOutput = mediaTargetToOutput.get(target);
+      if (!mediaOutput) {
+        const bytes = await readZipEntry(target);
+        assertResourceLimit(
+          bytes.length,
+          RESOURCE_LIMITS.mediaBytesPerFile,
+          "mediaBytesPerFile",
+          `PPTX media ${target}`,
+        );
+        totalImportedMediaBytes += bytes.length;
+        assertResourceLimit(
+          totalImportedMediaBytes,
+          RESOURCE_LIMITS.mediaBytesPerDeck,
+          "mediaBytesPerDeck",
+          "PPTX imported media",
+        );
+        const localName = `img-${++mediaIndex}${ext}`;
+        mediaOutput = {
+          relativePath: `media/${localName}`,
+          data: bytes,
+        };
+        mediaTargetToOutput.set(target, mediaOutput);
+        mediaOutputs.push(mediaOutput);
+      }
+      relIdToMedia.set(rId, mediaOutput.relativePath);
     }
 
     const { background, elements } = parseSlide(
@@ -544,7 +819,7 @@ export async function importPptx(pptxPath, outDir, options = {}) {
   }
 
   const title =
-    (await readZipText(zip, "docProps/core.xml"))?.match(
+    (await readZipText(readZipEntry, "docProps/core.xml"))?.match(
       /<dc:title>([^<]*)<\/dc:title>/,
     )?.[1] || basename(absPptx, ".pptx");
 

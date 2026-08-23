@@ -48,6 +48,8 @@ export, QA, or preview. They are runtime policy, not OOXML format limits.
 | Chart points per series / chart / deck | 2,048 / 8,192 / 32,768 |
 | Table rows / columns per row or `colW` entries | 256 / 64 |
 | Table cells per table / deck | 8,192 / 32,768 |
+| Imported PPTX archive bytes / entries | 192 MiB / 4,096 |
+| Imported PPTX uncompressed bytes per entry / archive | 32 MiB / 256 MiB |
 | Referenced local media per file / deck total | 32 MiB / 128 MiB |
 
 Authoring nodes include groups and leaves and are counted before groups are
@@ -58,8 +60,10 @@ byte limits apply when `checkMedia` is enabled and count each canonical resolved
 local path once, regardless of repeated references. Exceeding a ceiling throws
 `RESOURCE_LIMIT_EXCEEDED`.
 
-These ceilings do not limit source JSON/YAML bytes, imported PPTX archive
-expansion, generated output bytes, execution time, or process memory.
+PPTX import checks archive bytes and the raw central-directory entry count
+before JSZip parsing, then enforces declared and actual streaming inflate limits.
+These ceilings do not limit source JSON/YAML bytes, generated output bytes,
+execution time, or total process memory beyond the bounded inputs above.
 
 ## Element types (v1.1+)
 

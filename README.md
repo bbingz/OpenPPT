@@ -32,11 +32,11 @@ bun install
 ```
 
 ```bash
-# scaffold a project (themes: default|dark|magazine|report)
-bun bin/openppt.js init my-deck --theme magazine --title "Hello"
+# scaffold a four-page pitch skeleton (omit --skeleton for the two-page starter)
+bun bin/openppt.js init my-deck --skeleton --theme magazine --title "Hello"
 
-# markdown outline → deck (# title, ## section, - bullets)
-bun bin/openppt.js from-outline fixtures/outline-sample.md -o out/from-md --force
+# OR create a different project from markdown (# title, ## section, - bullets)
+bun bin/openppt.js from-outline fixtures/outline-sample.md -o out/from-md
 
 # validate IR
 bun bin/openppt.js validate fixtures/golden/deck.json
@@ -174,22 +174,25 @@ full runtime resource policy.
 Do **not** call any Kimi WASM, neo-ppt mirror, or `www.kimi.com` export path.
 Use **Bun**, not Node, for install/test/export in this project.
 
-## What v1.0 is / is not
+The HTML preview is an offline structural approximation, not a pixel-faithful
+PowerPoint renderer; charts appear as placeholders. Inspect the exported PPTX
+for final visual QA.
 
-**In scope**
+## Current capabilities (v1.5.0 plus Unreleased hardening)
 
-- Versioned open IR + machine-checkable schema  
-- Open compiler to real OOXML PPTX (editable text)  
-- Structural validation (bounds + media)  
-- CLI + library entry points + tests  
+- Versioned open IR, machine-checkable normalized-leaf schema, and authoring layout groups
+- Editable OOXML PPTX export for text, shapes, images, charts, tables, and hyperlinks
+- Multi-file decks, rich text, themes, templates, `init`, and `from-outline`
+- Lossy PPTX import for text, shapes, images, tables, and best-effort charts
+- Fail-closed validation/resource ceilings, structural QA, and offline structural preview
 
-**Not in v1.0 (backlog)**
+## Explicitly deferred or out of product scope
 
-- Charts, animations, font embedding parity  
-- Browser WYSIWYG editor  
-- Lossless PPTX → IR round-trip  
-- Full consulting design-system packs  
-- npm registry publish  
+- Pixel-faithful preview or a full browser WYSIWYG editor
+- Animations, transitions, embedded video, and font-embedding parity
+- Lossless PPTX → IR round-trip
+- Optional remote-image fetching
+- npm registry publish automation
 
 See [`docs/BACKLOG.md`](docs/BACKLOG.md).
 
