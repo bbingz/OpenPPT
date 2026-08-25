@@ -569,6 +569,7 @@ export function expandLayouts(deck) {
   }
   assertDeckResourceLimits(deck);
   assertUniqueAuthoringIds(deck);
+  deck = structuredClone(deck);
   const pages = deck.pages.map((page, index) => {
     if (typeof page === "string") {
       // multi-file paths should already be expanded by loadDeck

@@ -25,6 +25,12 @@ describe("openppt CLI (shipped entry)", () => {
     assert.equal(out, pkg.version);
   });
 
+  it("explains authoring groups versus the normalized leaf schema in help", () => {
+    const out = execFileSync(bunBin, [cli, "--help"], { encoding: "utf8" });
+    assert.match(out, /normalized leaf IR/i);
+    assert.match(out, /group.*authoring-only.*loadDeck.*validateDeck/i);
+  });
+
   it(
     "runs directly through the shipped Bun shebang",
     { skip: process.platform === "win32" },

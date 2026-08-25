@@ -1,8 +1,8 @@
-# OpenPPT IR v1 overview
+# OpenPPT IR overview
 
-Status: **stable for v1.0** (`version: "openppt-1"`).
+Status: **stable for OpenPPT v1.5** (`version: "openppt-1"`), with additional hardening tracked under Unreleased.
 
-Machine-readable schema: [`../schema/openppt-ir.schema.json`](../schema/openppt-ir.schema.json).
+The machine-readable [schema](../schema/openppt-ir.schema.json) describes normalized leaf IR after authoring groups are expanded. Group-bearing authoring IR is documented below and must go through `loadDeck` / `validateDeck` before leaf-schema validation.
 
 ## Design principles
 

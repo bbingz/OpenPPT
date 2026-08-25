@@ -38,9 +38,10 @@ Usage:
   bun bin/openppt.js -V | --version
 
 Notes:
-  - Schema: schema/openppt-ir.schema.json
+  - Schema: normalized leaf IR — schema/openppt-ir.schema.json
   - Agents: docs/AGENT.md
-  - Elements: text · shape · image · chart · table · group(stack|row|grid|layer)
+  - Leaf elements: text · shape · image · chart · table
+  - group(stack|row|grid|layer): authoring-only; use loadDeck / validateDeck before raw Ajv
   - from-outline: # title / ## section / - bullets → deck with layout groups
   - Export uses pptxgenjs only (no Kimi/neo-ppt WASM)
   - import is lossy (text/shapes/images/tables + best-effort charts)

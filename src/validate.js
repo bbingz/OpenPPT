@@ -11,7 +11,7 @@ import { isAbsolute, extname, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import Ajv2020 from "ajv/dist/2020.js";
 import { OpenPptError, ErrorCodes } from "./errors.js";
-import { expandLayouts, deckHasGroups } from "./layout.js";
+import { expandLayouts } from "./layout.js";
 import {
   assertDeckResourceLimits,
   assertResourceLimit,
@@ -411,11 +411,9 @@ export function validateDeck(deck, options = {}) {
       { pageIndex: externalPageIndex, pagePath: deck.pages[externalPageIndex] },
     );
   }
-  // Expand layout groups if caller passed pre-load authoring IR.
+  // Normalize authoring groups and detach validated output from caller-owned IR.
   // loadDeck already expands; expandLayouts is idempotent for leaf-only decks.
-  if (deckHasGroups(deck)) {
-    deck = expandLayouts(deck);
-  }
+  deck = expandLayouts(deck);
   assertDeckResourceLimits(deck);
 
   // Canonical media paths are an IR invariant. checkMedia only controls local

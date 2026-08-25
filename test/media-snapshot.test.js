@@ -16,7 +16,6 @@ import JSZip from "jszip";
 import PptxGenJS from "pptxgenjs";
 import { compileToBuffer, compileToPptx } from "../src/compile.js";
 import { renderPreviewHtml } from "../src/preview.js";
-import { validateDeck } from "../src/validate.js";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -55,6 +54,31 @@ async function readEmbeddedPng(pptxBytes) {
   return {
     bytes: await zip.file(mediaEntries[0]).async("nodebuffer"),
     slideXml: await zip.file("ppt/slides/slide1.xml").async("string"),
+  };
+}
+
+function replacePathAfterSnapshotEncoding(mediaPath, original, replacement) {
+  const originalToString = Buffer.prototype.toString;
+  let triggered = false;
+  Buffer.prototype.toString = function toStringAfterReplacement(...args) {
+    const result = originalToString.apply(this, args);
+    if (
+      !triggered &&
+      args[0] === "base64" &&
+      Buffer.compare(this, original) === 0
+    ) {
+      triggered = true;
+      writeFileSync(mediaPath, replacement);
+    }
+    return result;
+  };
+  return {
+    get triggered() {
+      return triggered;
+    },
+    restore() {
+      Buffer.prototype.toString = originalToString;
+    },
   };
 }
 
@@ -171,30 +195,17 @@ describe("validated media snapshots", () => {
     mkdirSync(mediaDir);
     writeFileSync(mediaPath, original);
 
+    const replacementHook = replacePathAfterSnapshotEncoding(
+      mediaPath,
+      original,
+      replacement,
+    );
     try {
-      let validationReads = 0;
-      validateDeck(
-        imageDeck(() => {
-          validationReads += 1;
-          return imagePages();
-        }),
-        { projectRoot: work, checkMedia: true },
-      );
-
-      writeFileSync(mediaPath, original);
-      let operationReads = 0;
-      const deck = imageDeck(() => {
-        operationReads += 1;
-        if (operationReads === validationReads + 1) {
-          writeFileSync(mediaPath, replacement);
-        }
-        return imagePages();
-      });
-      await compileToPptx(deck, outputPath, {
+      await compileToPptx(imageDeck(), outputPath, {
         projectRoot: work,
         force: true,
       });
-      assert.ok(operationReads >= validationReads + 1);
+      assert.equal(replacementHook.triggered, true);
 
       const output = readFileSync(outputPath);
       const { bytes: embedded, slideXml } = await readEmbeddedPng(output);
@@ -202,6 +213,7 @@ describe("validated media snapshots", () => {
       assert.notDeepEqual(embedded, replacement);
       assert.match(slideXml, /<a:srcRect l="0" r="0" t="0" b="0"\/>/);
     } finally {
+      replacementHook.restore();
       rmSync(work, { recursive: true, force: true });
     }
   });
@@ -217,33 +229,21 @@ describe("validated media snapshots", () => {
     mkdirSync(mediaDir);
     writeFileSync(mediaPath, original);
 
+    const replacementHook = replacePathAfterSnapshotEncoding(
+      mediaPath,
+      original,
+      replacement,
+    );
     try {
-      let validationReads = 0;
-      validateDeck(
-        imageDeck(() => {
-          validationReads += 1;
-          return imagePages();
-        }),
-        { projectRoot: work, checkMedia: true },
-      );
-
-      writeFileSync(mediaPath, original);
-      let operationReads = 0;
-      const deck = imageDeck(() => {
-        operationReads += 1;
-        if (operationReads === validationReads + 1) {
-          writeFileSync(mediaPath, replacement);
-        }
-        return imagePages();
-      });
-      const html = renderPreviewHtml(deck, work);
-      assert.equal(operationReads, validationReads + 1);
+      const html = renderPreviewHtml(imageDeck(), work);
+      assert.equal(replacementHook.triggered, true);
       const match = html.match(/data:image\/png;base64,([^\"]+)/);
       assert.ok(match);
       const embedded = Buffer.from(match[1], "base64");
       assert.deepEqual(embedded, original);
       assert.notDeepEqual(embedded, replacement);
     } finally {
+      replacementHook.restore();
       rmSync(work, { recursive: true, force: true });
     }
   });

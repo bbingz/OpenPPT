@@ -24,6 +24,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve, basename, extname } from "node:path";
 import JSZip from "jszip";
 import { OpenPptError, ErrorCodes } from "./errors.js";
+import { installFileNoClobber } from "./project-write.js";
 import {
   assertResourceLimit,
   RESOURCE_LIMITS,
@@ -551,10 +552,11 @@ async function readZipText(readZipEntry, path) {
  * @param {string} dest
  * @param {{ relativePath: string, data: string | Buffer }[]} outputs
  * @param {boolean} force
- * @param {{ renameSync?: typeof renameSync, unlinkSync?: typeof unlinkSync }} [operations]
+ * @param {{ linkSync?: typeof linkSync, renameSync?: typeof renameSync, unlinkSync?: typeof unlinkSync }} [operations]
  * @returns {string[]} cleanup warnings
  */
 export function commitImportOutputs(dest, outputs, force, operations = {}) {
+  const linkFile = operations.linkSync || linkSync;
   const renameFile = operations.renameSync || renameSync;
   const unlinkFile = operations.unlinkSync || unlinkSync;
   const transaction = randomBytes(8).toString("hex");
@@ -609,7 +611,12 @@ export function commitImportOutputs(dest, outputs, force, operations = {}) {
       if (!force) {
         // A hard link is an atomic no-clobber install because temp and target
         // share a directory/filesystem. EEXIST enters the rollback path.
-        linkSync(record.temp, record.target);
+        installFileNoClobber(
+          record.temp,
+          record.target,
+          record.data,
+          linkFile,
+        );
         record.installed = true;
         continue;
       }

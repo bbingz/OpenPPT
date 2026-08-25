@@ -9,6 +9,31 @@ import { randomBytes } from "node:crypto";
 import { dirname, join } from "node:path";
 import { ErrorCodes, OpenPptError } from "./errors.js";
 
+const LINK_FALLBACK_CODES = new Set(["EXDEV", "ENOTSUP", "ENOSYS"]);
+
+/**
+ * Install a staged file without clobbering an existing target. Filesystems that
+ * cannot hard-link fall back to an exclusive create; all other link errors pass
+ * through unchanged.
+ * @param {string} temp
+ * @param {string} target
+ * @param {string | Buffer} contents
+ * @param {typeof linkSync} [linkFile]
+ */
+export function installFileNoClobber(
+  temp,
+  target,
+  contents,
+  linkFile = linkSync,
+) {
+  try {
+    linkFile(temp, target);
+  } catch (err) {
+    if (!LINK_FALLBACK_CODES.has(err?.code)) throw err;
+    writeFileSync(target, contents, { flag: "wx" });
+  }
+}
+
 /**
  * Atomically replace deck.json from a complete sibling temp file.
  * @param {string} deckPath
@@ -30,7 +55,7 @@ export function writeDeckFileAtomic(deckPath, contents, operations = {}) {
       renameFile(temp, deckPath);
       return;
     }
-    linkFile(temp, deckPath);
+    installFileNoClobber(temp, deckPath, contents, linkFile);
   } catch (err) {
     let rollbackError = null;
     try {

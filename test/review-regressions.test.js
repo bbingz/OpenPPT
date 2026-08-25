@@ -493,6 +493,47 @@ describe("review regressions", () => {
     }
   });
 
+  it("falls back from EXDEV hard links without clobbering deck files", () => {
+    const work = mkdtempSync(join(tmpdir(), "openppt-project-link-fallback-"));
+    const unsupportedLink = () => {
+      const err = new Error("injected cross-device link");
+      err.code = "EXDEV";
+      throw err;
+    };
+    try {
+      const created = join(work, "created.json");
+      writeDeckFileAtomic(created, "created\n", { linkSync: unsupportedLink });
+      assert.equal(readFileSync(created, "utf8"), "created\n");
+
+      const existing = join(work, "existing.json");
+      writeFileSync(existing, "sentinel\n", "utf8");
+      assert.throws(
+        () =>
+          writeDeckFileAtomic(existing, "replacement\n", {
+            linkSync: unsupportedLink,
+          }),
+        (err) => err instanceof OpenPptError && err.code === ErrorCodes.EXPORT,
+      );
+      assert.equal(readFileSync(existing, "utf8"), "sentinel\n");
+
+      const denied = join(work, "denied.json");
+      assert.throws(
+        () =>
+          writeDeckFileAtomic(denied, "must not fall back\n", {
+            linkSync() {
+              const err = new Error("injected permission failure");
+              err.code = "EPERM";
+              throw err;
+            },
+          }),
+        (err) => err instanceof OpenPptError && err.code === ErrorCodes.EXPORT,
+      );
+      assert.equal(existsSync(denied), false);
+    } finally {
+      rmSync(work, { recursive: true, force: true });
+    }
+  });
+
   it("keeps an installed deck when sibling-temp cleanup fails", () => {
     const work = mkdtempSync(join(tmpdir(), "openppt-project-cleanup-"));
     try {

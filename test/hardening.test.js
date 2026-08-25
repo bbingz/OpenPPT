@@ -212,6 +212,30 @@ describe("v1 contract hardening", () => {
     validateDeck(expanded, { checkMedia: false });
   });
 
+  it("returns detached leaf IR without mutating compile callers", async () => {
+    const deck = deckWith({
+      id: "text",
+      type: "text",
+      bounds: [20, 20, 300, 60],
+      text: [{ text: "caller owned", bold: true }],
+    });
+    const before = structuredClone(deck);
+
+    const validated = validateDeck(deck, { checkMedia: false }).deck;
+    assert.notEqual(validated, deck);
+    assert.notEqual(validated.pages[0], deck.pages[0]);
+    assert.notEqual(validated.pages[0].elements[0], deck.pages[0].elements[0]);
+    assert.notEqual(
+      validated.pages[0].elements[0].text,
+      deck.pages[0].elements[0].text,
+    );
+    validated.pages[0].elements[0].text[0].text = "implementation write";
+    assert.deepEqual(deck, before);
+
+    await compileToBuffer(deck, { projectRoot: root });
+    assert.deepEqual(deck, before);
+  });
+
   it("rejects duplicate group ids before groups are flattened", () => {
     const deck = {
       version: "openppt-1",
@@ -415,6 +439,45 @@ describe("v1 contract hardening", () => {
         ).length,
         1,
       );
+    } finally {
+      rmSync(work, { recursive: true, force: true });
+    }
+  });
+
+  it("falls back from EXDEV hard links without clobbering import targets", () => {
+    const work = mkdtempSync(join(tmpdir(), "openppt-import-link-fallback-"));
+    let linkCalls = 0;
+    const unsupportedLink = () => {
+      linkCalls += 1;
+      const err = new Error("injected cross-device link");
+      err.code = "EXDEV";
+      throw err;
+    };
+    try {
+      const created = join(work, "created.json");
+      const warnings = commitImportOutputs(
+        work,
+        [{ relativePath: "created.json", data: "created" }],
+        false,
+        { linkSync: unsupportedLink },
+      );
+      assert.deepEqual(warnings, []);
+      assert.equal(linkCalls, 1);
+      assert.equal(readFileSync(created, "utf8"), "created");
+
+      const existing = join(work, "existing.json");
+      writeFileSync(existing, "sentinel", "utf8");
+      assert.throws(
+        () =>
+          commitImportOutputs(
+            work,
+            [{ relativePath: "existing.json", data: "replacement" }],
+            false,
+            { linkSync: unsupportedLink },
+          ),
+        (err) => err instanceof OpenPptError && err.code === ErrorCodes.EXPORT,
+      );
+      assert.equal(readFileSync(existing, "utf8"), "sentinel");
     } finally {
       rmSync(work, { recursive: true, force: true });
     }

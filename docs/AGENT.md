@@ -49,7 +49,7 @@ tokens: `{{DECK_TITLE}}`, `{{TITLE}}`, `{{SUBTITLE}}`, `{{FOOTER}}`,
 
 ## Element types
 
-- `text` — string **or** run array `[{text, bold?, color?, fontSize?, italic?}]`; optional `href`
+- `text` — string **or** run array `[{text, bold?, color?, fontSize?, italic?}]`; optional `href` using `http://`, `https://`, or `mailto:` only
 - `shape` — `rect` \| `roundRect` \| `ellipse`
 - `image` — local `media/*`
 - `chart` — `bar` \| `line` \| `pie` \| `doughnut` \| `area` + `series[{name,labels?,values}]`

@@ -2,6 +2,14 @@
 
 ## Changelog Memo
 
+### 2026-08-25
+
+- [修复] `validateDeck` 和布局展开现在返回与调用方深度隔离的 IR，leaf-only deck 也不再共享 page、element 或嵌套字段。
+- [修复] init/from-outline 与 PPTX import 在硬链接不受支持时使用 `wx` 独占写入回退，既支持 FAT/SMB/OneDrive 类文件系统，也保持 no-clobber。
+- [文档] CLI、IR 和 AGENT 文档已区分 authoring `group` 与 normalized leaf schema，并补全 `href` 协议限制。
+- [验证] Bun 1.4.1 canary 下 123 项测试与 production dependency-audit gate 全部通过；详见 `CHANGELOG.md`。
+- [风险] ZIP64 继续 fail-closed；已开始执行的 `pako.push()` 仍无法抢占取消；`image-size` 两条已审查 advisory 仍由 audit gate 约束。
+
 ### 2026-08-23
 
 - [修复] No-clobber import now keeps every successful hard-link output when sibling-temp cleanup fails and reports the leftover as a warning; see `CHANGELOG.md`.
