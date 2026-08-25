@@ -555,7 +555,7 @@ function expandPageLayoutsUnchecked(page) {
  */
 export function expandPageLayouts(page) {
   assertDeckResourceLimits({ pages: [page] });
-  return expandPageLayoutsUnchecked(page);
+  return expandPageLayoutsUnchecked(structuredClone(page));
 }
 
 /**

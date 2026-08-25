@@ -4,9 +4,10 @@
 
 - CLI help and authoring docs now state that the JSON Schema describes normalized leaf IR, while `group` is authoring-only and must pass through `loadDeck` / `validateDeck`; the IR status now reflects v1.5 and agent guidance lists the allowed hyperlink schemes.
 - Layout expansion and leaf-only validation now return deeply detached IR, so validated, compiled, previewed, or QA-consumed objects cannot alias caller-owned pages, elements, or nested fields.
+- Public `expandPageLayouts` now applies the same deep-detach rule to leaf-only pages, including nested page metadata and element fields.
 - No-clobber project creation and PPTX import now fall back from unsupported hard links (`EXDEV`, `ENOTSUP`, `ENOSYS`) to exclusive `wx` writes; `EEXIST`, `EPERM`, and other link errors still fail without overwriting the target.
 - Snapshot regressions now replace media immediately after snapshot encoding, preserving the original post-validation TOCTOU coverage under the detached-deck contract.
-- Local verification passed all 123 tests and the production dependency-audit gate on the current Bun 1.4.1 canary.
+- Local verification passed all 124 tests and the production dependency-audit gate on the current Bun 1.4.1 canary.
 - Known residuals remain unchanged: ZIP64 stays fail-closed, an already-running `pako.push()` cannot be preempted, and the reviewed runtime-unreachable `image-size` advisories remain installed behind the audit gate.
 - No-clobber import now commits every hard link before best-effort sibling-temp cleanup, preserving successful outputs and returning cleanup warnings when a temp remains locked.
 - Atomic non-force deck creation now treats a successful hard link as the commit point; a later sibling-temp cleanup failure cannot delete the installed `deck.json`.

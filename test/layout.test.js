@@ -6,7 +6,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import { loadDeck } from "../src/load.js";
-import { expandLayouts } from "../src/layout.js";
+import { expandLayouts, expandPageLayouts } from "../src/layout.js";
 import { validateDeck } from "../src/validate.js";
 import { compileToPptx } from "../src/compile.js";
 import { analyzeLayout, issuesFailThreshold } from "../src/qa.js";
@@ -18,6 +18,32 @@ const bunBin = process.env.BUN_BIN || "bun";
 const cli = join(root, "bin/openppt.js");
 
 describe("layout primitives (stack/row/grid)", () => {
+  it("detaches leaf-only pages from caller-owned objects", () => {
+    const page = {
+      id: "p",
+      background: { color: "#ffffff" },
+      elements: [
+        {
+          id: "text",
+          type: "text",
+          bounds: [0, 0, 100, 40],
+          text: [{ text: "caller owned", bold: true }],
+        },
+      ],
+    };
+    const before = structuredClone(page);
+
+    const expanded = expandPageLayouts(page);
+    assert.notEqual(expanded, page);
+    assert.notEqual(expanded.background, page.background);
+    assert.notEqual(expanded.elements[0], page.elements[0]);
+    assert.notEqual(expanded.elements[0].text, page.elements[0].text);
+
+    expanded.background.color = "#000000";
+    expanded.elements[0].text[0].text = "implementation write";
+    assert.deepEqual(page, before);
+  });
+
   it("expands stack with fixed + flex children", () => {
     const deck = {
       version: "openppt-1",
