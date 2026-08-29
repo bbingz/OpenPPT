@@ -28,6 +28,13 @@ const MEDIA_EXTENSIONS = new Set([
   ".svg",
 ]);
 
+/** Practical OOXML/pptxgenjs ceilings. Schema mirrors these maxima. */
+const FONT_SIZE_MAX_PT = 4000;
+const LINE_WIDTH_MAX_PT = 1584;
+const IMAGE_MAX_EDGE_PX = 65535;
+const IMAGE_MAX_ASPECT = 10000;
+const HEX_COLOR_RE = /^#([0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})$/;
+
 const MEDIA_OPEN_FLAGS =
   constants.O_RDONLY |
   (process.platform === "win32"
@@ -127,8 +134,39 @@ export function sniffImageType(absPath) {
  * @param {Buffer | Uint8Array} bytes
  * @returns {{ width: number, height: number } | null}
  */
+function svgNaturalSize(text) {
+  const open = text.match(/<svg\b[^>]*>/i);
+  if (!open) return null;
+  const tag = open[0];
+  const width = tag.match(/\bwidth\s*=\s*["']\s*([0-9.]+)\s*(?:px)?["']/i);
+  const height = tag.match(/\bheight\s*=\s*["']\s*([0-9.]+)\s*(?:px)?["']/i);
+  if (width && height) {
+    const w = Number(width[1]);
+    const h = Number(height[1]);
+    if (Number.isFinite(w) && Number.isFinite(h) && w > 0 && h > 0) {
+      return { width: w, height: h };
+    }
+  }
+  const viewBox = tag.match(
+    /\bviewBox\s*=\s*["']\s*[-0-9.]+\s+[-0-9.]+\s+([0-9.]+)\s+([0-9.]+)\s*["']/i,
+  );
+  if (viewBox) {
+    const w = Number(viewBox[1]);
+    const h = Number(viewBox[2]);
+    if (Number.isFinite(w) && Number.isFinite(h) && w > 0 && h > 0) {
+      return { width: w, height: h };
+    }
+  }
+  return null;
+}
+
 export function imageSizeFromBytes(bytes) {
   const buf = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const asText = buf.toString("utf8");
+  const head = asText.replace(/^\uFEFF/, "").trimStart();
+  if (head.startsWith("<svg") || (head.startsWith("<?xml") && /<svg[\s>]/i.test(head.slice(0, 256)))) {
+    return svgNaturalSize(asText);
+  }
   if (buf.length < 24) return null;
 
   if (
@@ -320,19 +358,86 @@ export function resolveColor(value, colors, context) {
   if (typeof value !== "string") {
     throw new OpenPptError(ErrorCodes.THEME_COLOR, `Invalid color at ${context}`);
   }
+  let hex = value;
   if (value.startsWith("$")) {
     const key = value.slice(1);
-    const hex = colors[key];
-    if (!hex) {
+    if (!Object.hasOwn(colors, key)) {
       throw new OpenPptError(
         ErrorCodes.THEME_COLOR,
         `Unresolved theme color token ${value} at ${context}`,
         { token: value, context },
       );
     }
-    return hex;
+    hex = colors[key];
   }
-  return value;
+  if (typeof hex !== "string" || !HEX_COLOR_RE.test(hex)) {
+    throw new OpenPptError(
+      ErrorCodes.THEME_COLOR,
+      `Unresolved theme color token ${value} at ${context}`,
+      { token: value, context, resolved: hex },
+    );
+  }
+  return hex;
+}
+
+function assertFontSize(value, ctx, extra = {}) {
+  if (value === undefined) return;
+  if (!Number.isFinite(value) || value <= 0 || value > FONT_SIZE_MAX_PT) {
+    throw new OpenPptError(
+      ErrorCodes.SCHEMA,
+      `fontSize must be a finite number in (0, ${FONT_SIZE_MAX_PT}] at ${ctx}: ${value}`,
+      extra,
+    );
+  }
+}
+
+function assertLineWidth(value, label, ctx, extra = {}) {
+  if (value === undefined) return;
+  if (!Number.isFinite(value) || value < 0 || value > LINE_WIDTH_MAX_PT) {
+    throw new OpenPptError(
+      ErrorCodes.SCHEMA,
+      `${label} must be a finite number in [0, ${LINE_WIDTH_MAX_PT}] at ${ctx}: ${value}`,
+      extra,
+    );
+  }
+}
+
+function assertNaturalImageSize(naturalSize, ctx, details) {
+  if (!naturalSize) return;
+  const { width, height } = naturalSize;
+  if (!Number.isFinite(width) || !Number.isFinite(height)) {
+    throw new OpenPptError(
+      ErrorCodes.MEDIA_TYPE,
+      `Image natural size out of range at ${ctx}: ${width}×${height}`,
+      details,
+    );
+  }
+  // 0×0 is an unusable header (e.g. padded sniff buffers); cover/contain skip it.
+  if (width < 1 || height < 1) return;
+  if (width > IMAGE_MAX_EDGE_PX || height > IMAGE_MAX_EDGE_PX) {
+    throw new OpenPptError(
+      ErrorCodes.MEDIA_TYPE,
+      `Image natural size out of range at ${ctx}: ${width}×${height}`,
+      details,
+    );
+  }
+  const aspect = Math.max(width, height) / Math.min(width, height);
+  if (!Number.isFinite(aspect) || aspect > IMAGE_MAX_ASPECT) {
+    throw new OpenPptError(
+      ErrorCodes.MEDIA_TYPE,
+      `Image aspect ratio out of range at ${ctx}: ${width}×${height}`,
+      details,
+    );
+  }
+}
+
+function wrapValidateError(err) {
+  if (err instanceof OpenPptError) throw err;
+  throw new OpenPptError(
+    ErrorCodes.SCHEMA,
+    `IR schema validation failed: ${err instanceof Error ? err.message : String(err)}`,
+    { cause: err },
+  );
 }
 
 /**
@@ -399,6 +504,18 @@ export function safeProjectPath(projectRoot, userPath) {
  * @returns {{ ok: true, deck: object, colors: Record<string, string>, mediaSnapshots: Map<string, object> }}
  */
 export function validateDeck(deck, options = {}) {
+  try {
+    return validateDeckInner(deck, options);
+  } catch (err) {
+    wrapValidateError(err);
+  }
+}
+
+/**
+ * @param {object} deck
+ * @param {{ projectRoot?: string, checkMedia?: boolean, captureMedia?: boolean }} [options]
+ */
+function validateDeckInner(deck, options = {}) {
   const { projectRoot, checkMedia = true, captureMedia = false } = options;
   assertDeckResourceLimits(deck);
   const externalPageIndex = Array.isArray(deck?.pages)
@@ -465,7 +582,11 @@ export function validateDeck(deck, options = {}) {
       { size: deck.size, max: MAX_CANVAS_PX },
     );
   }
-  const colors = { ...(deck.theme?.colors || {}) };
+  const colors = Object.create(null);
+  const themeColors = deck.theme?.colors || {};
+  for (const key of Object.keys(themeColors)) {
+    colors[key] = themeColors[key];
+  }
   /** @type {Set<string>} */
   const pageIds = new Set();
   /** @type {Set<string>} */
@@ -531,37 +652,31 @@ export function validateDeck(deck, options = {}) {
       }
 
       if (el.type === "text") {
-        if (el.fontSize !== undefined && !Number.isFinite(el.fontSize)) {
-          throw new OpenPptError(
-            ErrorCodes.SCHEMA,
-            `fontSize must be finite at ${ectx}: ${el.fontSize}`,
-            { pageId: page.id, elementId: el.id, fontSize: el.fontSize },
-          );
-        }
+        assertFontSize(el.fontSize, ectx, {
+          pageId: page.id,
+          elementId: el.id,
+          fontSize: el.fontSize,
+        });
         if (el.color) resolveColor(el.color, colors, `${ectx}.color`);
         if (Array.isArray(el.text)) {
           for (let ri = 0; ri < el.text.length; ri += 1) {
             const run = el.text[ri];
-            if (run.fontSize !== undefined && !Number.isFinite(run.fontSize)) {
-              throw new OpenPptError(
-                ErrorCodes.SCHEMA,
-                `fontSize must be finite at ${ectx}.text[${ri}]`,
-                { pageId: page.id, elementId: el.id, runIndex: ri },
-              );
-            }
+            assertFontSize(run.fontSize, `${ectx}.text[${ri}]`, {
+              pageId: page.id,
+              elementId: el.id,
+              runIndex: ri,
+            });
             if (run.color) {
               resolveColor(run.color, colors, `${ectx}.text[${ri}].color`);
             }
           }
         }
       } else if (el.type === "shape") {
-        if (el.lineWidth !== undefined && !Number.isFinite(el.lineWidth)) {
-          throw new OpenPptError(
-            ErrorCodes.SCHEMA,
-            `lineWidth must be finite at ${ectx}: ${el.lineWidth}`,
-            { pageId: page.id, elementId: el.id, lineWidth: el.lineWidth },
-          );
-        }
+        assertLineWidth(el.lineWidth, "lineWidth", ectx, {
+          pageId: page.id,
+          elementId: el.id,
+          lineWidth: el.lineWidth,
+        });
         if (el.fill) resolveColor(el.fill, colors, `${ectx}.fill`);
         if (el.lineColor) resolveColor(el.lineColor, colors, `${ectx}.lineColor`);
       } else if (el.type === "image") {
@@ -601,6 +716,11 @@ export function validateDeck(deck, options = {}) {
               );
               const type = sniffImageBytes(bytes);
               const naturalSize = imageSizeFromBytes(bytes);
+              assertNaturalImageSize(naturalSize, ectx, {
+                pageId: page.id,
+                elementId: el.id,
+                src: mediaSrc,
+              });
               snapshot = Object.freeze({
                 path: abs,
                 type,
@@ -627,6 +747,18 @@ export function validateDeck(deck, options = {}) {
               ErrorCodes.MEDIA_TYPE,
               `Extension ${ext} does not match image content (${sniffed}) at ${ectx}: ${mediaSrc}`,
               { pageId: page.id, elementId: el.id, src: mediaSrc, ext, sniffed },
+            );
+          }
+          const fit = el.fit || "cover";
+          if (
+            sniffed === "svg" &&
+            fit !== "fill" &&
+            !(snapshot.naturalSize && snapshot.naturalSize.width > 0 && snapshot.naturalSize.height > 0)
+          ) {
+            throw new OpenPptError(
+              ErrorCodes.MEDIA_TYPE,
+              `SVG fit=${fit} requires width/height or viewBox at ${ectx}: ${mediaSrc}`,
+              { pageId: page.id, elementId: el.id, src: mediaSrc, fit },
             );
           }
           if (captureMedia) mediaSnapshots.set(mediaSrc, snapshot);
@@ -688,20 +820,14 @@ export function validateDeck(deck, options = {}) {
             { pageId: page.id, elementId: el.id },
           );
         }
-        if (el.fontSize !== undefined && !Number.isFinite(el.fontSize)) {
-          throw new OpenPptError(
-            ErrorCodes.SCHEMA,
-            `fontSize must be finite at ${ectx}`,
-            { pageId: page.id, elementId: el.id },
-          );
-        }
-        if (el.borderWidth !== undefined && !Number.isFinite(el.borderWidth)) {
-          throw new OpenPptError(
-            ErrorCodes.SCHEMA,
-            `borderWidth must be finite at ${ectx}`,
-            { pageId: page.id, elementId: el.id },
-          );
-        }
+        assertFontSize(el.fontSize, ectx, {
+          pageId: page.id,
+          elementId: el.id,
+        });
+        assertLineWidth(el.borderWidth, "borderWidth", ectx, {
+          pageId: page.id,
+          elementId: el.id,
+        });
         if (el.colW) {
           if (
             el.colW.some(
@@ -748,16 +874,12 @@ export function validateDeck(deck, options = {}) {
               );
             }
             if (cell && typeof cell === "object" && !Array.isArray(cell)) {
-              if (
-                cell.fontSize !== undefined &&
-                !Number.isFinite(cell.fontSize)
-              ) {
-                throw new OpenPptError(
-                  ErrorCodes.SCHEMA,
-                  `fontSize must be finite at ${ectx}.rows[${ri}][${ci}]`,
-                  { pageId: page.id, elementId: el.id, row: ri, column: ci },
-                );
-              }
+              assertFontSize(cell.fontSize, `${ectx}.rows[${ri}][${ci}]`, {
+                pageId: page.id,
+                elementId: el.id,
+                row: ri,
+                column: ci,
+              });
               if (cell.color) {
                 resolveColor(cell.color, colors, `${ectx}.rows[${ri}][${ci}].color`);
               }

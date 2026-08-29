@@ -28,7 +28,7 @@ Under [`pages/`](pages/) — single page objects for agents that assemble multi-
 - `body.json`
 - `final.json`
 
-These are **not** full IR documents (no `version` / `size` / `theme`). Merge into a root deck before export.
+These are **not** full IR documents (no `version` / `size` / `theme`). Merge into a root deck before export. They are **absolute-layout simplified fragments** and are **not** equivalent to `pitch-skeleton`'s group-based pages.
 
 ## Layout demo (groups)
 

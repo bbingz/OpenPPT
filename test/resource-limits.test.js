@@ -17,6 +17,8 @@ import { ErrorCodes, OpenPptError } from "../src/errors.js";
 import { initProject } from "../src/init.js";
 import { expandPageLayouts } from "../src/layout.js";
 import { RESOURCE_LIMITS } from "../src/resource-limits.js";
+import { createBoundedZipReader } from "../src/import-pptx.js";
+import JSZip from "jszip";
 
 function textElement(id, text = "x") {
   return { id, type: "text", bounds: [0, 0, 10, 10], text };
@@ -627,5 +629,24 @@ describe("resource ceilings", () => {
     } finally {
       rmSync(work, { recursive: true, force: true });
     }
+  });
+
+  it("rejects inflate that crosses the aggregate uncompressed ceiling by one byte", async () => {
+    const zip = new JSZip();
+    zip.file("a.txt", "aaaaa");
+    zip.file("b.txt", "bbbbbb");
+    const buf = await zip.generateAsync({ type: "nodebuffer", compression: "STORE" });
+    const loaded = await JSZip.loadAsync(buf);
+    const read = createBoundedZipReader(loaded, { totalBytes: 10, entryBytes: 100 });
+    await read("a.txt");
+    await assert.rejects(
+      () => read("b.txt"),
+      (err) => {
+        assert.ok(err instanceof OpenPptError);
+        assert.equal(err.code, ErrorCodes.RESOURCE_LIMIT);
+        assert.equal(err.details.limit, "pptxUncompressedBytes");
+        return true;
+      },
+    );
   });
 });

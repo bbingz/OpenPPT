@@ -12,6 +12,7 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { openPptx, readPptxEntry } from "./helpers/pptx.js";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const cli = join(root, "bin/openppt.js");
@@ -93,7 +94,65 @@ describe("openppt CLI (shipped entry)", () => {
     assert.match(errOut, /MEDIA_MISSING/);
   });
 
-  it("exports golden fixture via CLI", () => {
+  it("accepts -- as an options terminator", () => {
+    const out = execFileSync(
+      bunBin,
+      [cli, "validate", "--", join(root, "fixtures/golden/deck.json")],
+      { encoding: "utf8" },
+    );
+    assert.match(out, /OK/);
+  });
+
+  it("warns on duplicate flags and keeps help on stdout", () => {
+    const outDir = mkdtempSync(join(tmpdir(), "openppt-cli-dup-"));
+    try {
+      const dup = spawnSync(
+        bunBin,
+        [
+          cli,
+          "export",
+          join(root, "fixtures/golden/deck.json"),
+          "-o",
+          join(outDir, "dup.pptx"),
+          "--force",
+          "--force",
+        ],
+        { encoding: "utf8" },
+      );
+      assert.equal(dup.status, 0, dup.stderr);
+      assert.match(dup.stderr, /duplicate option --force/);
+    } finally {
+      rmSync(outDir, { recursive: true, force: true });
+    }
+
+    const help = spawnSync(bunBin, [cli, "--help"], { encoding: "utf8" });
+    assert.equal(help.status, 0);
+    assert.match(help.stdout, /Usage:/);
+    assert.equal(help.stderr.trim(), "");
+  });
+
+  it("prints a missing-command error on stderr", () => {
+    const r = spawnSync(bunBin, [cli], { encoding: "utf8" });
+    assert.equal(r.status, 2);
+    assert.match(r.stderr, /Missing command/);
+    assert.doesNotMatch(r.stdout, /Usage:/);
+  });
+
+  it("import and preview require -o and exit 2 when it is missing", () => {
+    const imp = spawnSync(bunBin, [cli, "import", "deck.pptx"], {
+      encoding: "utf8",
+    });
+    assert.equal(imp.status, 2);
+    assert.match(imp.stderr, /import requires -o/);
+
+    const prev = spawnSync(bunBin, [cli, "preview", join(root, "fixtures/golden/deck.json")], {
+      encoding: "utf8",
+    });
+    assert.equal(prev.status, 2);
+    assert.match(prev.stderr, /preview requires -o/);
+  });
+
+  it("exports golden fixture via CLI", async () => {
     const outDir = mkdtempSync(join(tmpdir(), "openppt-cli-export-"));
     try {
       const out = join(outDir, "cli-deck.pptx");
@@ -105,8 +164,43 @@ describe("openppt CLI (shipped entry)", () => {
       assert.match(log, /Wrote/);
       assert.ok(existsSync(out));
       assert.ok(statSync(out).size > 0);
+      const pptx = await openPptx(out);
+      const xml = await readPptxEntry(pptx, "ppt/slides/slide1.xml");
+      assert.match(xml, /<p:sld[\s>]|<p:cSld/);
+      assert.match(xml, /a:t/);
     } finally {
       rmSync(outDir, { recursive: true, force: true });
+    }
+  });
+
+  it("runs import and preview subcommands end to end", async () => {
+    const work = mkdtempSync(join(tmpdir(), "openppt-cli-e2e-"));
+    try {
+      const pptx = join(work, "in.pptx");
+      execFileSync(
+        bunBin,
+        [cli, "export", join(root, "fixtures/golden/deck.json"), "-o", pptx, "--force"],
+        { encoding: "utf8" },
+      );
+      const imported = join(work, "imported");
+      const imp = execFileSync(
+        bunBin,
+        [cli, "import", pptx, "-o", imported, "--force"],
+        { encoding: "utf8" },
+      );
+      assert.match(imp, /Wrote/);
+      assert.ok(existsSync(join(imported, "deck.json")));
+
+      const html = join(work, "preview.html");
+      const prev = execFileSync(
+        bunBin,
+        [cli, "preview", join(imported, "deck.json"), "-o", html, "--force"],
+        { encoding: "utf8" },
+      );
+      assert.match(prev, /Wrote/);
+      assert.match(readFileSync(html, "utf8"), /class="page"/);
+    } finally {
+      rmSync(work, { recursive: true, force: true });
     }
   });
 });

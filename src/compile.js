@@ -4,12 +4,15 @@ import {
   unlinkSync,
   renameSync,
   realpathSync,
+  readFileSync,
+  linkSync,
 } from "node:fs";
 import { dirname, resolve, join } from "node:path";
 import { randomBytes } from "node:crypto";
 import PptxGenJS from "pptxgenjs";
 import { resolveColor, validateDeck } from "./validate.js";
 import { OpenPptError, ErrorCodes } from "./errors.js";
+import { installFileNoClobber } from "./project-write.js";
 
 /** CSS px → inches at 96dpi (matches common web/PPT mapping). */
 const PX_PER_IN = 96;
@@ -23,19 +26,49 @@ const PX_PER_IN = 96;
  * @param {"cover" | "contain"} mode
  */
 function placementForFit(nat, box, mode) {
+  if (
+    !nat ||
+    !Number.isFinite(nat.width) ||
+    !Number.isFinite(nat.height) ||
+    nat.width <= 0 ||
+    nat.height <= 0
+  ) {
+    throw new OpenPptError(
+      ErrorCodes.MEDIA_TYPE,
+      `Image natural size is missing or out of range (${nat?.width}×${nat?.height})`,
+    );
+  }
   const imgAr = nat.width / nat.height;
   const boxAr = box.w / box.h;
+  if (!Number.isFinite(imgAr) || !Number.isFinite(boxAr) || box.w <= 0 || box.h <= 0) {
+    throw new OpenPptError(
+      ErrorCodes.MEDIA_TYPE,
+      `Image placement is out of range for ${mode}`,
+    );
+  }
+  let place;
   if (mode === "contain") {
-    if (imgAr > boxAr) {
-      return { w: box.w, h: box.w / imgAr };
-    }
-    return { w: box.h * imgAr, h: box.h };
+    place =
+      imgAr > boxAr
+        ? { w: box.w, h: box.w / imgAr }
+        : { w: box.h * imgAr, h: box.h };
+  } else if (imgAr > boxAr) {
+    place = { w: box.h * imgAr, h: box.h };
+  } else {
+    place = { w: box.w, h: box.w / imgAr };
   }
-  // cover: scale so image fully covers the box
-  if (imgAr > boxAr) {
-    return { w: box.h * imgAr, h: box.h };
+  if (
+    !Number.isFinite(place.w) ||
+    !Number.isFinite(place.h) ||
+    place.w <= 0 ||
+    place.h <= 0
+  ) {
+    throw new OpenPptError(
+      ErrorCodes.MEDIA_TYPE,
+      `Image placement is out of range for ${mode}`,
+    );
   }
-  return { w: box.w, h: box.w / imgAr };
+  return place;
 }
 
 /**
@@ -79,6 +112,31 @@ function toPptxColor(hex) {
  * @param {string} shape
  * @param {import("pptxgenjs").default} pptx
  */
+function shapeLine(width, colorParts) {
+  if (!width) {
+    return { type: "none" };
+  }
+  /** @type {Record<string, unknown>} */
+  const line = {
+    type: "solid",
+    color: colorParts.color,
+    width,
+  };
+  if (colorParts.transparency !== undefined) {
+    line.transparency = colorParts.transparency;
+  }
+  return line;
+}
+
+function tableBorder(width, color) {
+  if (!width) {
+    const none = { type: "none" };
+    return [none, none, none, none];
+  }
+  const edge = { type: "solid", pt: width, color };
+  return [edge, edge, edge, edge];
+}
+
 function mapShape(shape, pptx) {
   const s = pptx.ShapeType || {};
   switch (shape) {
@@ -118,7 +176,10 @@ function buildPresentation(deck, colors, mediaSnapshots) {
       const bg = toPptxColorParts(
         resolveColor(page.background.color, colors, "background"),
       );
-      slide.background = { color: bg.color };
+      /** @type {Record<string, unknown>} */
+      const background = { color: bg.color };
+      if (bg.transparency !== undefined) background.transparency = bg.transparency;
+      slide.background = background;
     }
 
     for (const el of page.elements) {
@@ -152,23 +213,36 @@ function buildPresentation(deck, colors, mediaSnapshots) {
         }
         if (Array.isArray(el.text)) {
           const runs = el.text.map((run) => {
-            const options = {};
-            if (run.bold !== undefined) options.bold = Boolean(run.bold);
+            const runColor = run.color
+              ? toPptxColorParts(
+                  resolveColor(run.color, colors, `${el.id}.run`),
+                )
+              : base;
+            /** @type {Record<string, unknown>} */
+            const options = {
+              bold: run.bold !== undefined ? Boolean(run.bold) : Boolean(el.bold),
+              fontSize: run.fontSize ?? el.fontSize ?? 18,
+              fontFace: run.fontFamily || el.fontFamily || "Arial",
+              color: runColor.color,
+            };
             if (run.italic !== undefined) options.italic = Boolean(run.italic);
-            if (run.fontSize !== undefined) options.fontSize = run.fontSize;
-            if (run.fontFamily) options.fontFace = run.fontFamily;
-            if (run.color) {
-              const parts = toPptxColorParts(
-                resolveColor(run.color, colors, `${el.id}.run`),
-              );
-              options.color = parts.color;
-              if (parts.transparency !== undefined) {
-                options.transparency = parts.transparency;
-              }
+            if (runColor.transparency !== undefined) {
+              options.transparency = runColor.transparency;
+            }
+            if (el.href && typeof el.href === "string") {
+              options.hyperlink = { url: el.href };
             }
             return { text: run.text, options };
           });
-          slide.addText(runs, boxOpts);
+          // Do not put run-overridable styles on the box: pptxgenjs ORs box.bold
+          // over run.bold:false and would otherwise inherit parent transparency.
+          const runBox = {
+            ...box,
+            align: boxOpts.align,
+            valign: boxOpts.valign,
+            fontFace: boxOpts.fontFace,
+          };
+          slide.addText(runs, runBox);
         } else {
           slide.addText(el.text, boxOpts);
         }
@@ -186,10 +260,7 @@ function buildPresentation(deck, colors, mediaSnapshots) {
         slide.addShape(mapShape(el.shape, pptx), {
           ...box,
           fill,
-          line: {
-            color: lineParts.color,
-            width: el.lineWidth ?? 0,
-          },
+          line: shapeLine(el.lineWidth ?? 0, lineParts),
         });
       } else if (el.type === "image") {
         const mediaSrc = el.src;
@@ -220,11 +291,16 @@ function buildPresentation(deck, colors, mediaSnapshots) {
         if (fit === "cover" || fit === "contain" || fit === "crop") {
           const nat = snapshot.naturalSize;
           const mode = fit === "contain" ? "contain" : "cover";
-          if (nat && nat.width > 0 && nat.height > 0) {
-            const place = placementForFit(nat, box, mode);
-            imgOpts.w = place.w;
-            imgOpts.h = place.h;
+          if (!nat || !(nat.width > 0) || !(nat.height > 0)) {
+            throw new OpenPptError(
+              ErrorCodes.MEDIA_TYPE,
+              `Image fit=${fit} requires a natural size (SVG needs width/height or viewBox)`,
+              { elementId: el.id, src: mediaSrc, fit },
+            );
           }
+          const place = placementForFit(nat, box, mode);
+          imgOpts.w = place.w;
+          imgOpts.h = place.h;
           // Map crop → cover (centered). Explicit crop offsets not in IR v1.
           imgOpts.sizing = {
             type: mode,
@@ -248,17 +324,21 @@ function buildPresentation(deck, colors, mediaSnapshots) {
           labels: ser.labels || ser.values.map((_, i) => String(i + 1)),
           values: ser.values,
         }));
+        const isPie = el.chartType === "pie" || el.chartType === "doughnut";
         const chartOpts = {
           ...box,
           showTitle: Boolean(el.title),
-          showLegend: el.series.length > 1,
+          showLegend: isPie || el.series.length > 1,
+          showValue: isPie,
+          showPercent: isPie,
         };
         if (el.title) chartOpts.title = el.title;
         slide.addChart(chartType, series, chartOpts);
       } else if (el.type === "table") {
-        const borderColor = el.borderColor
-          ? toPptxColor(resolveColor(el.borderColor, colors, el.id))
-          : "CBD5E1";
+        const borderColorParts = el.borderColor
+          ? toPptxColorParts(resolveColor(el.borderColor, colors, el.id))
+          : { color: "CBD5E1" };
+        const borderColor = borderColorParts.color;
         const borderW = el.borderWidth ?? 0.5;
         const defaultFs = el.fontSize ?? 12;
         const colCount = Math.max(
@@ -289,7 +369,20 @@ function buildPresentation(deck, colors, mediaSnapshots) {
             const cell = row[ci];
             const isHeader = Boolean(el.header) && ri === 0;
             if (cell === undefined || cell === null) {
-              cells.push({ text: "", options: { fontSize: defaultFs } });
+              /** @type {Record<string, unknown>} */
+              const options = {
+                fontSize: defaultFs,
+                align: "left",
+                valign: "middle",
+              };
+              if (isHeader) {
+                options.color = "FFFFFF";
+                options.bold = true;
+                options.fill = { color: primaryHex };
+              } else {
+                options.color = textHex;
+              }
+              cells.push({ text: "", options });
               continue;
             }
             if (typeof cell === "string" || typeof cell === "number") {
@@ -317,10 +410,19 @@ function buildPresentation(deck, colors, mediaSnapshots) {
                 align: cell.align || "left",
                 valign: "middle",
               };
+              if (parts.transparency !== undefined) {
+                options.transparency = parts.transparency;
+              }
               if (cell.fill) {
-                options.fill = {
-                  color: toPptxColor(resolveColor(cell.fill, colors, el.id)),
-                };
+                const fillParts = toPptxColorParts(
+                  resolveColor(cell.fill, colors, el.id),
+                );
+                /** @type {Record<string, unknown>} */
+                const fill = { color: fillParts.color };
+                if (fillParts.transparency !== undefined) {
+                  fill.transparency = fillParts.transparency;
+                }
+                options.fill = fill;
               } else if (isHeader) {
                 options.fill = { color: primaryHex };
               }
@@ -333,12 +435,7 @@ function buildPresentation(deck, colors, mediaSnapshots) {
         slide.addTable(tableRows, {
           ...box,
           colW: colWIn,
-          border: [
-            { type: "solid", pt: borderW, color: borderColor },
-            { type: "solid", pt: borderW, color: borderColor },
-            { type: "solid", pt: borderW, color: borderColor },
-            { type: "solid", pt: borderW, color: borderColor },
-          ],
+          border: tableBorder(borderW, borderColor),
           fontFace: "Arial",
           fontSize: defaultFs,
           color: textHex,
@@ -375,7 +472,10 @@ function realOrResolve(p) {
  * @returns {Promise<{ outputPath: string, pageCount: number }>}
  */
 export async function compileToPptx(deck, outputPath, options) {
-  const { projectRoot, force = false, sourcePath } = options;
+  const { projectRoot, force = false, sourcePath, operations = {} } = options;
+  const renameFile = operations.renameSync || renameSync;
+  const unlinkFile = operations.unlinkSync || unlinkSync;
+  const linkFile = operations.linkSync || linkSync;
   const { deck: validatedDeck, colors, mediaSnapshots } = validateDeck(deck, {
     projectRoot,
     checkMedia: true,
@@ -404,7 +504,17 @@ export async function compileToPptx(deck, outputPath, options) {
   }
 
   mkdirSync(dirname(out), { recursive: true });
-  const pptx = buildPresentation(validatedDeck, colors, mediaSnapshots);
+  let pptx;
+  try {
+    pptx = buildPresentation(validatedDeck, colors, mediaSnapshots);
+  } catch (err) {
+    if (err instanceof OpenPptError) throw err;
+    throw new OpenPptError(
+      ErrorCodes.EXPORT,
+      `pptxgenjs presentation build failed: ${err instanceof Error ? err.message : String(err)}`,
+      { cause: err },
+    );
+  }
   // pptxgenjs appends ".pptx" when the path does not already end with it.
   const tmp = join(
     dirname(out),
@@ -416,11 +526,27 @@ export async function compileToPptx(deck, outputPath, options) {
     if (!existsSync(tmp)) {
       throw new OpenPptError(ErrorCodes.EXPORT, `Export produced no temp file at ${tmp}`);
     }
-    // Atomic replace of destination only after successful write.
-    renameSync(tmp, out);
+    if (force) {
+      renameFile(tmp, out);
+    } else {
+      try {
+        installFileNoClobber(tmp, out, readFileSync(tmp), linkFile);
+      } catch (err) {
+        throw new OpenPptError(
+          ErrorCodes.EXPORT,
+          `Output already exists (pass force=true to overwrite): ${out}`,
+          { cause: err },
+        );
+      }
+      try {
+        if (existsSync(tmp)) unlinkFile(tmp);
+      } catch {
+        // hard link is committed; leftover sibling temp is harmless
+      }
+    }
   } catch (err) {
     try {
-      if (existsSync(tmp)) unlinkSync(tmp);
+      if (existsSync(tmp)) unlinkFile(tmp);
     } catch {
       // ignore cleanup failures
     }
@@ -428,6 +554,7 @@ export async function compileToPptx(deck, outputPath, options) {
     throw new OpenPptError(
       ErrorCodes.EXPORT,
       `pptxgenjs write failed: ${err instanceof Error ? err.message : String(err)}`,
+      { cause: err },
     );
   }
 
@@ -451,7 +578,17 @@ export async function compileToBuffer(deck, options) {
     checkMedia: true,
     captureMedia: true,
   });
-  const pptx = buildPresentation(validatedDeck, colors, mediaSnapshots);
+  let pptx;
+  try {
+    pptx = buildPresentation(validatedDeck, colors, mediaSnapshots);
+  } catch (err) {
+    if (err instanceof OpenPptError) throw err;
+    throw new OpenPptError(
+      ErrorCodes.EXPORT,
+      `pptxgenjs presentation build failed: ${err instanceof Error ? err.message : String(err)}`,
+      { cause: err },
+    );
+  }
   const data = await pptx.write({ outputType: "nodebuffer" });
   return Buffer.isBuffer(data) ? data : Buffer.from(data);
 }

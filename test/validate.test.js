@@ -12,8 +12,16 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadDeck } from "../src/load.js";
-import { validateDeck, getSchemaValidator, safeProjectPath } from "../src/validate.js";
+import {
+  validateDeck,
+  getSchemaValidator,
+  safeProjectPath,
+  resolveColor,
+  imageSizeFromBytes,
+  sniffImageBytes,
+} from "../src/validate.js";
 import { OpenPptError, ErrorCodes } from "../src/errors.js";
+import { pngIhdrHeader } from "./helpers/pptx.js";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -300,6 +308,331 @@ describe("validateDeck (shipped)", () => {
         return true;
       },
     );
+  });
+
+  it("rejects finite but unbounded fontSize (1e308)", () => {
+    assert.throws(
+      () =>
+        validateDeck(
+          {
+            version: "openppt-1",
+            size: [960, 540],
+            pages: [
+              {
+                id: "p1",
+                elements: [
+                  {
+                    id: "t1",
+                    type: "text",
+                    bounds: [0, 0, 100, 40],
+                    text: "x",
+                    fontSize: 1e308,
+                  },
+                ],
+              },
+            ],
+          },
+          { checkMedia: false },
+        ),
+      (err) => {
+        assert.ok(err instanceof OpenPptError);
+        assert.equal(err.code, ErrorCodes.SCHEMA);
+        return true;
+      },
+    );
+  });
+
+  it("rejects prototype-chain theme tokens", () => {
+    for (const token of [
+      "$constructor",
+      "$toString",
+      "$hasOwnProperty",
+      "$valueOf",
+      "$isPrototypeOf",
+      "$propertyIsEnumerable",
+    ]) {
+      assert.throws(
+        () =>
+          validateDeck(
+            {
+              version: "openppt-1",
+              size: [960, 540],
+              pages: [
+                {
+                  id: "p1",
+                  elements: [
+                    {
+                      id: "t1",
+                      type: "text",
+                      bounds: [0, 0, 100, 40],
+                      text: "x",
+                      color: token,
+                    },
+                  ],
+                },
+              ],
+            },
+            { checkMedia: false },
+          ),
+        (err) => {
+          assert.ok(err instanceof OpenPptError);
+          assert.equal(err.code, ErrorCodes.THEME_COLOR);
+          return true;
+        },
+        token,
+      );
+    }
+  });
+
+  it("resolveColor rejects prototype keys and non-hex exits", () => {
+    const colors = { primary: "#2563EB" };
+    assert.throws(
+      () => resolveColor("$constructor", colors, "test"),
+      (err) => err instanceof OpenPptError && err.code === ErrorCodes.THEME_COLOR,
+    );
+    assert.throws(
+      () => resolveColor("not-a-color", colors, "test"),
+      (err) => err instanceof OpenPptError && err.code === ErrorCodes.THEME_COLOR,
+    );
+    assert.equal(resolveColor("$primary", colors, "test"), "#2563EB");
+    assert.equal(resolveColor("#11223344", colors, "test"), "#11223344");
+  });
+
+  it("rejects PNG natural sizes that overflow ST_Coordinate", () => {
+    const huge = pngIhdrHeader(4294967295, 1);
+    assert.deepEqual(imageSizeFromBytes(huge), {
+      width: 4294967295,
+      height: 1,
+    });
+
+    const dir = mkdtempSync(join(tmpdir(), "openppt-huge-png-"));
+    try {
+      mkdirSync(join(dir, "media"), { recursive: true });
+      writeFileSync(join(dir, "media/huge.png"), huge);
+      assert.throws(
+        () =>
+          validateDeck(
+            {
+              version: "openppt-1",
+              size: [960, 540],
+              pages: [
+                {
+                  id: "p1",
+                  elements: [
+                    {
+                      id: "img1",
+                      type: "image",
+                      bounds: [0, 0, 100, 100],
+                      src: "media/huge.png",
+                    },
+                  ],
+                },
+              ],
+            },
+            { projectRoot: dir, checkMedia: true },
+          ),
+        (err) => {
+          assert.ok(err instanceof OpenPptError);
+          assert.equal(err.code, ErrorCodes.MEDIA_TYPE);
+          return true;
+        },
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("wraps EISDIR from loadDeck as IO_ERROR", () => {
+    assert.throws(
+      () => loadDeck(root),
+      (err) => {
+        assert.ok(err instanceof OpenPptError);
+        assert.equal(err.code, ErrorCodes.IO);
+        assert.equal(err instanceof TypeError && !(err instanceof OpenPptError), false);
+        return true;
+      },
+    );
+  });
+
+  it("wraps function values as SCHEMA_INVALID instead of DataCloneError", () => {
+    const deck = {
+      version: "openppt-1",
+      size: [960, 540],
+      pages: [
+        {
+          id: "p1",
+          elements: [
+            { id: "t1", type: "text", bounds: [0, 0, 100, 40], text: "x" },
+          ],
+        },
+      ],
+    };
+    deck.pages[0].poison = function nope() {};
+    assert.throws(
+      () => validateDeck(deck, { checkMedia: false }),
+      (err) => {
+        assert.ok(err instanceof OpenPptError);
+        assert.equal(err.code, ErrorCodes.SCHEMA);
+        return true;
+      },
+    );
+  });
+
+  it("wraps deeply nested IR as SCHEMA_INVALID instead of RangeError", () => {
+    let poison = { leaf: 1 };
+    for (let i = 0; i < 50000; i += 1) poison = { n: poison };
+    const deck = {
+      version: "openppt-1",
+      size: [960, 540],
+      pages: [
+        {
+          id: "p1",
+          elements: [
+            { id: "t1", type: "text", bounds: [0, 0, 100, 40], text: "x" },
+          ],
+        },
+      ],
+    };
+    deck.pages[0].poison = poison;
+    assert.throws(
+      () => validateDeck(deck, { checkMedia: false }),
+      (err) => {
+        assert.ok(err instanceof OpenPptError);
+        assert.equal(err.code, ErrorCodes.SCHEMA);
+        return true;
+      },
+    );
+  });
+
+  it("rejects SVG without natural size unless fit is fill", () => {
+    const dir = mkdtempSync(join(tmpdir(), "openppt-svg-fit-"));
+    try {
+      mkdirSync(join(dir, "media"), { recursive: true });
+      writeFileSync(
+        join(dir, "media/bare.svg"),
+        `<svg xmlns="http://www.w3.org/2000/svg"><rect width="10" height="10"/></svg>`,
+      );
+      const deck = (fit) => ({
+        version: "openppt-1",
+        size: [200, 200],
+        pages: [
+          {
+            id: "p1",
+            elements: [
+              {
+                id: "img",
+                type: "image",
+                bounds: [0, 0, 100, 100],
+                src: "media/bare.svg",
+                fit,
+              },
+            ],
+          },
+        ],
+      });
+      assert.throws(
+        () => validateDeck(deck("cover"), { projectRoot: dir, checkMedia: true }),
+        (err) => err instanceof OpenPptError && err.code === ErrorCodes.MEDIA_TYPE,
+      );
+      assert.equal(
+        validateDeck(deck("fill"), { projectRoot: dir, checkMedia: true }).ok,
+        true,
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("sniffs GIF, JPEG, and WEBP dimensions from minimal buffers", () => {
+    const gif = Buffer.alloc(24);
+    gif.write("GIF89a", 0);
+    gif.writeUInt16LE(7, 6);
+    gif.writeUInt16LE(9, 8);
+    assert.equal(sniffImageBytes(gif), "gif");
+    assert.deepEqual(imageSizeFromBytes(gif), { width: 7, height: 9 });
+
+    const jpeg = Buffer.alloc(24, 0);
+    jpeg[0] = 0xff;
+    jpeg[1] = 0xd8;
+    jpeg[2] = 0xff;
+    jpeg[3] = 0xc0;
+    jpeg.writeUInt16BE(11, 4);
+    jpeg[6] = 8;
+    jpeg.writeUInt16BE(11, 7);
+    jpeg.writeUInt16BE(13, 9);
+    assert.equal(sniffImageBytes(jpeg), "jpeg");
+    assert.deepEqual(imageSizeFromBytes(jpeg), { width: 13, height: 11 });
+
+    const vp8 = Buffer.alloc(30);
+    vp8.write("RIFF", 0);
+    vp8.write("WEBP", 8);
+    vp8.write("VP8 ", 12);
+    vp8.writeUInt16LE(17, 26);
+    vp8.writeUInt16LE(19, 28);
+    assert.equal(sniffImageBytes(vp8), "webp");
+    assert.deepEqual(imageSizeFromBytes(vp8), { width: 17, height: 19 });
+
+    const vp8l = Buffer.alloc(30);
+    vp8l.write("RIFF", 0);
+    vp8l.write("WEBP", 8);
+    vp8l.write("VP8L", 12);
+    vp8l.writeUInt32LE((21 - 1) | ((23 - 1) << 14), 21);
+    assert.deepEqual(imageSizeFromBytes(vp8l), { width: 21, height: 23 });
+
+    const vp8x = Buffer.alloc(30);
+    vp8x.write("RIFF", 0);
+    vp8x.write("WEBP", 8);
+    vp8x.write("VP8X", 12);
+    const wMinus = 31 - 1;
+    const hMinus = 41 - 1;
+    vp8x[24] = wMinus & 0xff;
+    vp8x[25] = (wMinus >> 8) & 0xff;
+    vp8x[26] = (wMinus >> 16) & 0xff;
+    vp8x[27] = hMinus & 0xff;
+    vp8x[28] = (hMinus >> 8) & 0xff;
+    vp8x[29] = (hMinus >> 16) & 0xff;
+    assert.deepEqual(imageSizeFromBytes(vp8x), { width: 31, height: 41 });
+  });
+
+  it("rejects an SVG polyglot that starts with a PNG header", () => {
+    const dir = mkdtempSync(join(tmpdir(), "openppt-polyglot-"));
+    try {
+      mkdirSync(join(dir, "media"), { recursive: true });
+      writeFileSync(
+        join(dir, "media/poly.svg"),
+        Buffer.concat([
+          Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+          Buffer.from("<html><svg xmlns='http://www.w3.org/2000/svg'></svg></html>"),
+        ]),
+      );
+      assert.throws(
+        () =>
+          validateDeck(
+            {
+              version: "openppt-1",
+              size: [200, 200],
+              pages: [
+                {
+                  id: "p1",
+                  elements: [
+                    {
+                      id: "img",
+                      type: "image",
+                      bounds: [0, 0, 100, 100],
+                      src: "media/poly.svg",
+                      fit: "fill",
+                    },
+                  ],
+                },
+              ],
+            },
+            { projectRoot: dir, checkMedia: true },
+          ),
+        (err) => err instanceof OpenPptError && err.code === ErrorCodes.MEDIA_TYPE,
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it("schema validator is the real ajv function from getSchemaValidator", () => {

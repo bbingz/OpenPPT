@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { loadDeck } from "../src/load.js";
 import { validateDeck } from "../src/validate.js";
 import { compileToPptx } from "../src/compile.js";
+import { openPptx, readPptxEntry } from "./helpers/pptx.js";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -32,6 +33,12 @@ describe("templates (shipped skeletons)", () => {
       assert.ok(existsSync(result.outputPath));
       assert.ok(statSync(result.outputPath).size > 1000);
       assert.equal(result.pageCount, 4);
+      const pptx = await openPptx(result.outputPath);
+      assert.ok(pptx.file("ppt/slides/slide1.xml"));
+      assert.ok(pptx.file("ppt/slides/slide4.xml"));
+      const xml = await readPptxEntry(pptx, "ppt/slides/slide1.xml");
+      assert.match(xml, /<p:sld[\s>]|<p:cSld/);
+      assert.match(xml, /a:t/);
     } finally {
       rmSync(outDir, { recursive: true, force: true });
     }

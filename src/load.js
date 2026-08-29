@@ -15,7 +15,16 @@ function parseDocumentFile(sourcePath) {
   if (!existsSync(sourcePath)) {
     throw new OpenPptError(ErrorCodes.IO, `File not found: ${sourcePath}`);
   }
-  const raw = readFileSync(sourcePath, "utf8");
+  let raw;
+  try {
+    raw = readFileSync(sourcePath, "utf8");
+  } catch (err) {
+    throw new OpenPptError(
+      ErrorCodes.IO,
+      `Failed to read file: ${err instanceof Error ? err.message : String(err)}`,
+      { sourcePath, cause: err },
+    );
+  }
   const ext = extname(sourcePath).toLowerCase();
   let doc;
   try {

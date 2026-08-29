@@ -6,7 +6,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import { loadDeck } from "../src/load.js";
-import { expandLayouts, expandPageLayouts } from "../src/layout.js";
+import { expandLayouts, expandPageLayouts, deckHasGroups } from "../src/layout.js";
 import { validateDeck } from "../src/validate.js";
 import { compileToPptx } from "../src/compile.js";
 import { analyzeLayout, issuesFailThreshold } from "../src/qa.js";
@@ -80,6 +80,92 @@ describe("layout primitives (stack/row/grid)", () => {
     // layout hints stripped
     assert.equal(els[1].flex, undefined);
     assert.equal(els[1].height, undefined);
+  });
+
+  it("rejects flex weights that resolve to non-finite sizes", () => {
+    assert.throws(
+      () =>
+        expandLayouts({
+          version: "openppt-1",
+          size: [200, 200],
+          pages: [
+            {
+              id: "p",
+              elements: [
+                {
+                  id: "g",
+                  type: "group",
+                  layout: "row",
+                  bounds: [0, 0, 200, 40],
+                  children: [
+                    { id: "a", type: "text", flex: 1e308, text: "A" },
+                    { id: "b", type: "text", flex: 1e308, text: "B" },
+                  ],
+                },
+              ],
+            },
+          ],
+        }),
+      (err) => {
+        assert.ok(err instanceof OpenPptError);
+        assert.equal(err.code, ErrorCodes.LAYOUT);
+        return true;
+      },
+    );
+  });
+
+  it("copies layer leaf bounds so siblings are not aliased", () => {
+    const out = expandLayouts({
+      version: "openppt-1",
+      size: [200, 100],
+      pages: [
+        {
+          id: "p",
+          elements: [
+            {
+              id: "card",
+              type: "group",
+              layout: "layer",
+              bounds: [10, 20, 100, 50],
+              children: [
+                { id: "bg", type: "shape", shape: "rect", fill: "#ffffff" },
+                { id: "fg", type: "text", text: "Hi" },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+    const [bg, fg] = out.pages[0].elements;
+    assert.deepEqual(bg.bounds, [10, 20, 100, 50]);
+    assert.deepEqual(fg.bounds, [10, 20, 100, 50]);
+    assert.notEqual(bg.bounds, fg.bounds);
+    bg.bounds[0] = 999;
+    assert.equal(fg.bounds[0], 10);
+  });
+
+  it("deckHasGroups is true only while authoring groups remain", () => {
+    const authored = {
+      version: "openppt-1",
+      size: [100, 100],
+      pages: [
+        {
+          id: "p",
+          elements: [
+            {
+              id: "g",
+              type: "group",
+              layout: "stack",
+              bounds: [0, 0, 100, 100],
+              children: [{ id: "t", type: "text", height: 40, text: "x" }],
+            },
+          ],
+        },
+      ],
+    };
+    assert.equal(deckHasGroups(authored), true);
+    assert.equal(deckHasGroups(expandLayouts(authored)), false);
+    assert.equal(deckHasGroups({ pages: [] }), false);
   });
 
   it("expands row and nested stack", () => {
@@ -168,6 +254,72 @@ describe("layout primitives (stack/row/grid)", () => {
     assert.deepEqual(els[0].bounds, [10, 10, 180, 80]); // bg fills card
     assert.deepEqual(els[1].bounds, [20, 20, 160, 20]); // title after padding
     assert.deepEqual(els[2].bounds, [20, 40, 160, 40]); // flex body
+  });
+
+  it("places stack children using justify center, end, and space-between", () => {
+    const deck = (justify) => ({
+      version: "openppt-1",
+      size: [200, 200],
+      pages: [
+        {
+          id: "p",
+          elements: [
+            {
+              id: "g",
+              type: "group",
+              layout: "stack",
+              bounds: [0, 0, 200, 200],
+              justify,
+              children: [
+                { id: "a", type: "text", height: 40, text: "A" },
+                { id: "b", type: "text", height: 40, text: "B" },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+    const center = expandLayouts(deck("center")).pages[0].elements;
+    assert.deepEqual(center[0].bounds, [0, 60, 200, 40]);
+    assert.deepEqual(center[1].bounds, [0, 100, 200, 40]);
+    const end = expandLayouts(deck("end")).pages[0].elements;
+    assert.deepEqual(end[0].bounds, [0, 120, 200, 40]);
+    assert.deepEqual(end[1].bounds, [0, 160, 200, 40]);
+    const between = expandLayouts(deck("space-between")).pages[0].elements;
+    assert.deepEqual(between[0].bounds, [0, 0, 200, 40]);
+    assert.deepEqual(between[1].bounds, [0, 160, 200, 40]);
+  });
+
+  it("places row children using align center and end", () => {
+    const deck = (align) => ({
+      version: "openppt-1",
+      size: [400, 100],
+      pages: [
+        {
+          id: "p",
+          elements: [
+            {
+              id: "g",
+              type: "group",
+              layout: "row",
+              bounds: [0, 0, 400, 100],
+              gap: 0,
+              align,
+              children: [
+                { id: "a", type: "text", width: 100, height: 40, text: "A" },
+                { id: "b", type: "text", width: 100, height: 40, text: "B" },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+    const center = expandLayouts(deck("center")).pages[0].elements;
+    assert.deepEqual(center[0].bounds, [0, 30, 100, 40]);
+    assert.deepEqual(center[1].bounds, [100, 30, 100, 40]);
+    const end = expandLayouts(deck("end")).pages[0].elements;
+    assert.deepEqual(end[0].bounds, [0, 60, 100, 40]);
+    assert.deepEqual(end[1].bounds, [100, 60, 100, 40]);
   });
 
   it("expands grid into equal cells", () => {

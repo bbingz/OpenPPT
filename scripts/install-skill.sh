@@ -10,11 +10,23 @@ if [[ ! -f "$SRC/SKILL.md" ]]; then
   exit 1
 fi
 
+FORCE=0
+if [[ "${1:-}" == "--force" ]]; then
+  FORCE=1
+fi
+
 install_one() {
   local dest="$1"
   mkdir -p "$dest"
-  # Copy skill tree; include a pointer to the repo for OPENPPT_ROOT discovery.
-  rm -rf "$dest/$NAME"
+  if [[ -e "$dest/$NAME" ]]; then
+    if [[ "$FORCE" -ne 1 ]]; then
+      echo "exists: $dest/$NAME (pass --force to replace; a timestamped .bak is kept)" >&2
+      return 0
+    fi
+    local bak="$dest/${NAME}.bak.$(date +%Y%m%d%H%M%S)"
+    mv "$dest/$NAME" "$bak"
+    echo "Backed up existing skill → $bak"
+  fi
   mkdir -p "$dest/$NAME"
   cp "$SRC/SKILL.md" "$dest/$NAME/SKILL.md"
   printf '%s\n' "$ROOT" >"$dest/$NAME/OPENPPT_ROOT"
@@ -30,4 +42,6 @@ for d in .claude .codex .cursor .grok; do
   fi
 done
 
-echo "Done. Agents should see skill 'openppt'. Set OPENPPT_ROOT=$ROOT if needed."
+echo "Done. Agents should see skill 'openppt'."
+echo "OPENPPT_ROOT file: \$HOME/.agents/skills/openppt/OPENPPT_ROOT (after install)."
+echo "Re-run with --force to replace an existing install (previous copy is renamed .bak)."

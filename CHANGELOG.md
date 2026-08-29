@@ -1,5 +1,26 @@
 # Changelog
 
+## Unreleased — 2026-08-29
+
+- Fail-closed numeric ceilings: `fontSize` 1–4000pt and `lineWidth`/`borderWidth` 0–1584pt in schema plus runtime; `fontSize: 1e308` no longer writes `sz="Infinity"`. Table `colW` stays weight-based (existing overflow-sum rejection), not capped at 1584.
+- Theme tokens no longer resolve through `Object.prototype`; `resolveColor` requires `#RRGGBB` / `#RRGGBBAA` or throws `THEME_COLOR_UNRESOLVED` (`$constructor` / `$toString` / `$hasOwnProperty`).
+- PNG natural size is capped (edge ≤65535px, aspect ≤10000:1) before EMU placement; oversized IHDR headers are `MEDIA_TYPE_INVALID`.
+- PPTX import uses linear tag scanning instead of non-greedy `[\s\S]*?`; malformed unclosed tags fail closed in bounded time.
+- Import page order follows `p:sldIdLst` + `ppt/_rels/presentation.xml.rels`; ghost `slideN.xml` files outside the list are ignored.
+- Public load/validate/compile wrap untyped I/O and clone failures as `IO_ERROR` / `SCHEMA_INVALID` (EISDIR, deep clone, function values).
+- Non-force PPTX export installs with exclusive `link`/`wx` (same no-clobber contract as `project-write.js`).
+- Text `href` is written on each run so pptxgenjs 3.12.0 emits `hlinkClick` without `rIdundefined`.
+- SVG `cover`/`contain`/`crop` parse `width`/`height`/`viewBox`; missing size is `MEDIA_TYPE_INVALID` unless `fit=fill`.
+- Zero-width shape/table borders emit `{type:"none"}`; run `bold:false` is materialized; RGBA alpha is passed as transparency on background, lines, and table fills.
+- Flex weights are normalized before multiply with a finite check (`LAYOUT_INVALID`); layer leaves copy bounds instead of sharing one array.
+- Single-series pie/doughnut charts show legend and data labels; padded header cells reuse full header style.
+- Import keeps only `mc:Fallback` (else Choice), preserves `a:p`/`a:br` newlines, parses relationships in any attribute order with single quotes and OPC target resolve, skips `p:grpSp` with a warning, and removes empty `outDir`/`media` created by a failed commit.
+- QA composites text alpha over the page background, scores contrast per run, estimates overflow from the largest run fontSize, and reports mixed-type overlap except the text-on-shape whitelist.
+- CLI supports `--` as an options terminator, warns on duplicate flags, prints missing-command errors on stderr, and uses `ALREADY_EXISTS` for occupied `init` / `from-outline` targets.
+- Preview HTML escapes single quotes (`&#39;`). Skill install no longer silently `rm -rf`s an existing skill (backup + `--force`).
+- CI: `permissions: contents: read`, canary `continue-on-error`, Bun 1.4.0 on macOS/Windows, actions pinned to SHAs. Production audit `clean` path still runs lock/entry/runtime probes (golden + chart export).
+- Unreleased items above require `main@HEAD`; they are not in the 1.5.0 tarball. Version is not bumped.
+
 ## Unreleased — 2026-08-25
 
 - CLI help and authoring docs now state that the JSON Schema describes normalized leaf IR, while `group` is authoring-only and must pass through `loadDeck` / `validateDeck`; the IR status now reflects v1.5 and agent guidance lists the allowed hyperlink schemes.

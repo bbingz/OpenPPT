@@ -20,7 +20,10 @@ git clone https://github.com/bbingz/OpenPPT.git
 cd OpenPPT && bun install
 ```
 
-Set `OPENPPT_ROOT` to the repo root when invoking the CLI from elsewhere.
+After `bash scripts/install-skill.sh`, the repo root is stored in
+`OPENPPT_ROOT=$(cat "$HOME/.agents/skills/openppt/OPENPPT_ROOT")`.
+If the current working directory is already the OpenPPT repo, use
+`bun bin/openppt.js ...` instead of `$OPENPPT_ROOT`.
 
 ## Default deliverables
 
@@ -52,7 +55,7 @@ Prefer absolute paths in the final reply.
   - Charts: `type: "chart"`, `chartType` ∈ bar|line|pie|doughnut|area, `series[{name,values,labels?}]`
   - Tables: `type: "table"`, `rows: [["H1","H2"],["a","b"]]`, optional `header: true`, `colW`
   - Text links: `"href": "https://..."` on text elements
-  - **Layout groups (prefer for multi-block pages):** authoring-only `type: "group"`, `layout: "stack"|"row"|"grid"|"layer"`, `bounds`, `gap?`, `children` with `height`/`width`/`flex` — `layer` = card overlay (bg + content). See `fixtures/layout-demo/`, `demos/sspai-113139/`, `docs/IR.md`
+  - **Layout groups (prefer for multi-block pages):** authoring-only `type: "group"`, `layout: "stack"|"row"|"grid"|"layer"`, `bounds`, `gap?`, `children` with `height`/`width`/`flex` — `layer` = card overlay (bg + content). See packed `fixtures/layout-demo/` (or `demos/sspai-113139/` if you have a git checkout), `docs/IR.md`
   - Theme color sources: the top-level `colors` value in `themes/default.json`, `dark.json`, `magazine.json`, or `report.json`
   - Theme colors: `"$primary"` style tokens under `theme.colors`
   - First read: `docs/AGENT.md` (then schema if needed)
@@ -62,10 +65,11 @@ Prefer absolute paths in the final reply.
 ### 3. Scaffold / outline (optional)
 
 ```bash
+OPENPPT_ROOT=$(cat "$HOME/.agents/skills/openppt/OPENPPT_ROOT")
 # choose one creation route for a new project
 bun "$OPENPPT_ROOT/bin/openppt.js" init /abs/path/project --skeleton --theme magazine --title "Deck"
 # OR
-bun "$OPENPPT_ROOT/bin/openppt.js" from-outline /abs/path/outline.md -o /abs/path/outline-project
+bun "$OPENPPT_ROOT/bin/openppt.js" from-outline /abs/path/outline.md -o /abs/path/project
 ```
 
 Outline format: `# Title`, `## Section`, `- bullet` lines.
@@ -76,11 +80,11 @@ creation commands against the same directory unless replacement is intended.
 ### 4. Validate, QA, export, preview
 
 ```bash
-bun "$OPENPPT_ROOT/bin/openppt.js" validate /abs/path/deck.json
-bun "$OPENPPT_ROOT/bin/openppt.js" qa       /abs/path/deck.json
-bun "$OPENPPT_ROOT/bin/openppt.js" qa       /abs/path/deck.json --fail-on med
-bun "$OPENPPT_ROOT/bin/openppt.js" export  /abs/path/deck.json -o /abs/path/deck.pptx --force
-bun "$OPENPPT_ROOT/bin/openppt.js" preview /abs/path/deck.json -o /abs/path/preview.html --force
+bun "$OPENPPT_ROOT/bin/openppt.js" validate /abs/path/project/deck.json
+bun "$OPENPPT_ROOT/bin/openppt.js" qa       /abs/path/project/deck.json
+bun "$OPENPPT_ROOT/bin/openppt.js" qa       /abs/path/project/deck.json --fail-on med
+bun "$OPENPPT_ROOT/bin/openppt.js" export  /abs/path/project/deck.json -o /abs/path/project/deck.pptx --force
+bun "$OPENPPT_ROOT/bin/openppt.js" preview /abs/path/project/deck.json -o /abs/path/project/preview.html --force
 ```
 
 Preview is an offline structural approximation, not pixel-faithful PowerPoint
@@ -93,7 +97,7 @@ Import existing PPTX (lossy):
 bun "$OPENPPT_ROOT/bin/openppt.js" import /abs/path/in.pptx -o /abs/path/project/ --force
 ```
 
-If `OPENPPT_ROOT` is the current directory, use `bun bin/openppt.js ...`.
+If the current working directory is the OpenPPT repo, use `bun bin/openppt.js ...`.
 
 Fix `SCHEMA_INVALID` / `BOUNDS_OUT_OF_RANGE` / `LAYOUT_INVALID` / `MEDIA_MISSING` / `MEDIA_TYPE_INVALID` / `THEME_COLOR_UNRESOLVED` / `RESOURCE_LIMIT_EXCEEDED` before re-exporting. Fail-closed: do not hand-edit the PPTX to “paper over” IR errors.
 

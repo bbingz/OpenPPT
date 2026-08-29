@@ -63,27 +63,65 @@ function parseArgs(argv) {
     skeleton: false,
     help: false,
     version: false,
+    warnings: [],
   };
+  const seen = new Set();
+
+  function noteFlag(name) {
+    if (seen.has(name)) {
+      opts.warnings.push(`duplicate option ${name}`);
+    }
+    seen.add(name);
+  }
+
+  function takeValue(flag) {
+    const value = args.shift();
+    if (!value || value.startsWith("-")) {
+      throw new Error(`${flag} requires a path argument (got ${value ?? "nothing"})`);
+    }
+    return value;
+  }
+
+  function addPositional(token) {
+    if (!opts.command && COMMANDS.has(token)) {
+      opts.command = token;
+      return;
+    }
+    if (!opts.input) {
+      opts.input = token;
+      return;
+    }
+    throw new Error(`Unexpected argument: ${token}`);
+  }
 
   while (args.length) {
     const a = args.shift();
+    if (a === "--") {
+      while (args.length) addPositional(args.shift());
+      break;
+    }
     if (a === "-h" || a === "--help") {
+      noteFlag("--help");
       opts.help = true;
       continue;
     }
     if (a === "-V" || a === "--version") {
+      noteFlag("--version");
       opts.version = true;
       continue;
     }
     if (a === "--force") {
+      noteFlag("--force");
       opts.force = true;
       continue;
     }
     if (a === "--skeleton") {
+      noteFlag("--skeleton");
       opts.skeleton = true;
       continue;
     }
     if (a === "--fail-on") {
+      noteFlag("--fail-on");
       const value = args.shift();
       if (!value || value.startsWith("-")) {
         throw new Error(
@@ -99,6 +137,7 @@ function parseArgs(argv) {
       continue;
     }
     if (a === "--theme") {
+      noteFlag("--theme");
       const value = args.shift();
       if (!value || value.startsWith("-")) {
         throw new Error(`--theme requires a name (got ${value ?? "nothing"})`);
@@ -107,6 +146,7 @@ function parseArgs(argv) {
       continue;
     }
     if (a === "--title") {
+      noteFlag("--title");
       const value = args.shift();
       if (!value || value.startsWith("-")) {
         throw new Error(`--title requires a string (got ${value ?? "nothing"})`);
@@ -115,27 +155,14 @@ function parseArgs(argv) {
       continue;
     }
     if (a === "-o" || a === "--output") {
-      const value = args.shift();
-      if (!value || value.startsWith("-")) {
-        throw new Error(
-          `${a} requires a path argument (got ${value ?? "nothing"})`,
-        );
-      }
-      opts.output = value;
+      noteFlag("-o/--output");
+      opts.output = takeValue(a);
       continue;
     }
     if (a.startsWith("-")) {
       throw new Error(`Unknown option: ${a}`);
     }
-    if (!opts.command && COMMANDS.has(a)) {
-      opts.command = a;
-      continue;
-    }
-    if (!opts.input) {
-      opts.input = a;
-      continue;
-    }
-    throw new Error(`Unexpected argument: ${a}`);
+    addPositional(a);
   }
   return opts;
 }
@@ -174,13 +201,22 @@ async function main() {
     process.exit(2);
   }
 
+  for (const warning of opts.warnings) {
+    console.error(`Warning: ${warning}`);
+  }
+
   if (opts.version) {
     console.log(pkg.version);
     return;
   }
-  if (opts.help || !opts.command) {
+  if (opts.help) {
     printHelp();
-    process.exit(opts.help ? 0 : 2);
+    process.exit(0);
+  }
+  if (!opts.command) {
+    console.error("Missing command");
+    console.error("Try --help for usage");
+    process.exit(2);
   }
 
   try {

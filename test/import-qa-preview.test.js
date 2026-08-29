@@ -4,6 +4,7 @@ import {
   existsSync,
   mkdtempSync,
   readFileSync,
+  renameSync,
   rmSync,
   statSync,
 } from "node:fs";
@@ -12,10 +13,13 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadDeck } from "../src/load.js";
 import { compileToPptx } from "../src/compile.js";
-import { importPptx } from "../src/import-pptx.js";
+import { importPptx, commitImportOutputs } from "../src/import-pptx.js";
+import { ErrorCodes } from "../src/errors.js";
 import { qaDeck, analyzeLayout } from "../src/qa.js";
-import { writePreviewHtml } from "../src/preview.js";
+import { writePreviewHtml, renderPreviewHtml } from "../src/preview.js";
 import { validateDeck } from "../src/validate.js";
+import { OpenPptError } from "../src/errors.js";
+import { slideXmlWithText, writeMinimalPptx } from "./helpers/pptx.js";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -60,6 +64,144 @@ describe("import / qa / preview", () => {
     }
   });
 
+  it("qa composites transparent text instead of scoring 21:1", () => {
+    const result = analyzeLayout({
+      version: "openppt-1",
+      size: [960, 540],
+      pages: [
+        {
+          id: "p1",
+          background: { type: "solid", color: "#FFFFFF" },
+          elements: [
+            {
+              id: "ghost",
+              type: "text",
+              bounds: [100, 100, 400, 40],
+              text: "invisible",
+              color: "#00000000",
+              fontSize: 18,
+            },
+          ],
+        },
+      ],
+    });
+    const issue = result.issues.find((i) => i.code === "LOW_CONTRAST");
+    assert.ok(issue, "transparent black on white must not be treated as 21:1");
+    assert.ok(issue.details.ratio < 2.5);
+  });
+
+  it("qa uses run-level color and the largest run fontSize", () => {
+    const lowRun = analyzeLayout({
+      version: "openppt-1",
+      size: [960, 540],
+      pages: [
+        {
+          id: "p1",
+          background: { type: "solid", color: "#FFFFFF" },
+          elements: [
+            {
+              id: "t",
+              type: "text",
+              bounds: [80, 80, 400, 40],
+              color: "#111827",
+              fontSize: 12,
+              text: [
+                { text: "ok" },
+                { text: "faint", color: "#EEEEEE", fontSize: 36 },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+    assert.ok(lowRun.issues.some((i) => i.code === "LOW_CONTRAST" && /run\[1\]/.test(i.message)));
+
+    const overflow = analyzeLayout({
+      version: "openppt-1",
+      size: [960, 540],
+      pages: [
+        {
+          id: "p1",
+          elements: [
+            {
+              id: "t",
+              type: "text",
+              bounds: [10, 10, 80, 80],
+              fontSize: 8,
+              text: [
+                {
+                  text: "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+                  fontSize: 48,
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+    assert.ok(overflow.issues.some((i) => i.code === "TEXT_OVERFLOW_RISK"));
+    const capIssue = overflow.issues.find((i) => i.code === "TEXT_OVERFLOW_RISK");
+    assert.equal(capIssue.details.fontSize, 48);
+  });
+
+  it("qa flags mixed-type overlap except text-on-shape", () => {
+    const textOnShape = analyzeLayout({
+      version: "openppt-1",
+      size: [960, 540],
+      pages: [
+        {
+          id: "p1",
+          elements: [
+            {
+              id: "s",
+              type: "shape",
+              bounds: [0, 0, 200, 100],
+              shape: "rect",
+              fill: "#2563EB",
+            },
+            {
+              id: "t",
+              type: "text",
+              bounds: [10, 10, 180, 80],
+              text: "label",
+            },
+          ],
+        },
+      ],
+    });
+    assert.equal(
+      textOnShape.issues.some((i) => i.code === "OVERLAP"),
+      false,
+    );
+
+    const textOnImage = analyzeLayout({
+      version: "openppt-1",
+      size: [960, 540],
+      pages: [
+        {
+          id: "p1",
+          elements: [
+            {
+              id: "img",
+              type: "image",
+              bounds: [0, 0, 200, 100],
+              src: "media/x.png",
+            },
+            {
+              id: "t",
+              type: "text",
+              bounds: [10, 10, 180, 80],
+              text: "caption",
+            },
+          ],
+        },
+      ],
+    });
+    const mixed = textOnImage.issues.find((i) => i.code === "OVERLAP");
+    assert.ok(mixed);
+    assert.equal(mixed.severity, "low");
+  });
+
   it("qa flags overlapping text on a synthetic deck", () => {
     const deck = {
       version: "openppt-1",
@@ -95,6 +237,36 @@ describe("import / qa / preview", () => {
     assert.equal(result.ok, true);
   });
 
+  it("escapes script, attribute, and quote payloads in preview HTML", () => {
+    const html = renderPreviewHtml(
+      {
+        version: "openppt-1",
+        title: `</h1><script>alert(1)</script>'onclick='x`,
+        size: [960, 540],
+        pages: [
+          {
+            id: "p1",
+            elements: [
+              {
+                id: "t",
+                type: "text",
+                bounds: [20, 20, 400, 40],
+                text: `"><img onerror=alert(1)> and 'quote`,
+              },
+            ],
+          },
+        ],
+      },
+      root,
+    );
+    assert.doesNotMatch(html, /<script>/i);
+    assert.doesNotMatch(html, /<img\s/i);
+    assert.match(html, /&lt;script&gt;/);
+    assert.match(html, /&quot;&gt;&lt;img onerror=/);
+    assert.match(html, /&#39;quote/);
+    assert.match(html, /&#39;onclick=&#39;/);
+  });
+
   it("writes an HTML preview containing page markup", () => {
     const { deck, projectRoot } = loadDeck(join(root, "fixtures/golden/deck.json"));
     validateDeck(deck, { projectRoot, checkMedia: true });
@@ -107,6 +279,225 @@ describe("import / qa / preview", () => {
       assert.match(html, /class="page"/);
     } finally {
       rmSync(outDir, { recursive: true, force: true });
+    }
+  });
+
+  it("fail-closes malformed unclosed-tag slides within a time bound", async () => {
+    const work = mkdtempSync(join(tmpdir(), "openppt-import-dos-"));
+    try {
+      const pptxPath = join(work, "malformed.pptx");
+      const junk = `<p:sp ${"<p:sp ".repeat(80_000)}`;
+      await writeMinimalPptx(pptxPath, {
+        slides: [{ xml: `<?xml version="1.0"?><p:sld>${junk}` }],
+      });
+      const start = Date.now();
+      let caught = null;
+      try {
+        await importPptx(pptxPath, join(work, "out"), { force: true });
+      } catch (err) {
+        caught = err;
+      }
+      assert.ok(Date.now() - start < 5000, "import must not hang on unclosed tags");
+      if (caught) {
+        assert.ok(caught instanceof OpenPptError || caught instanceof Error);
+      }
+    } finally {
+      rmSync(work, { recursive: true, force: true });
+    }
+  });
+
+  it("orders imported pages from sldIdLst + rels, ignoring ghost slides", async () => {
+    const work = mkdtempSync(join(tmpdir(), "openppt-import-order-"));
+    try {
+      const pptxPath = join(work, "ordered.pptx");
+      await writeMinimalPptx(pptxPath, {
+        slides: [
+          { path: "ppt/slides/slide1.xml", xml: slideXmlWithText("FIRST_FILENAME") },
+          { path: "ppt/slides/slide2.xml", xml: slideXmlWithText("SECOND_FILENAME") },
+          { path: "ppt/slides/slide3.xml", xml: slideXmlWithText("GHOST_SLIDE") },
+        ],
+        presentationRels: [
+          { id: "rId2", target: "slides/slide2.xml" },
+          { id: "rId3", target: "slides/slide1.xml" },
+        ],
+        sldIdLst: [
+          { id: "256", rId: "rId2" },
+          { id: "257", rId: "rId3" },
+        ],
+      });
+      const imp = await importPptx(pptxPath, join(work, "out"), { force: true });
+      const loaded = loadDeck(imp.deckPath);
+      const texts = loaded.deck.pages.map((page) =>
+        page.elements.map((el) => el.text).join(""),
+      );
+      assert.deepEqual(texts, ["SECOND_FILENAME", "FIRST_FILENAME"]);
+      assert.equal(
+        texts.some((text) => text.includes("GHOST")),
+        false,
+      );
+    } finally {
+      rmSync(work, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps only Fallback from AlternateContent", async () => {
+    const work = mkdtempSync(join(tmpdir(), "openppt-import-ac-"));
+    try {
+      const pptxPath = join(work, "ac.pptx");
+      const extra = `
+      <mc:AlternateContent xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006">
+        <mc:Choice Requires="p14">
+          <p:sp>
+            <p:nvSpPr><p:cNvPr id="9" name="c"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr>
+            <p:spPr><a:xfrm><a:off x="0" y="500000"/><a:ext cx="1828800" cy="457200"/></a:xfrm></p:spPr>
+            <p:txBody><a:bodyPr/><a:p><a:r><a:t>CHOICE_TEXT</a:t></a:r></a:p></p:txBody>
+          </p:sp>
+        </mc:Choice>
+        <mc:Fallback>
+          <p:sp>
+            <p:nvSpPr><p:cNvPr id="10" name="f"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr>
+            <p:spPr><a:xfrm><a:off x="0" y="500000"/><a:ext cx="1828800" cy="457200"/></a:xfrm></p:spPr>
+            <p:txBody><a:bodyPr/><a:p><a:r><a:t>FALLBACK_TEXT</a:t></a:r></a:p></p:txBody>
+          </p:sp>
+        </mc:Fallback>
+      </mc:AlternateContent>`;
+      await writeMinimalPptx(pptxPath, {
+        slides: [{ xml: slideXmlWithText("BASE", extra) }],
+      });
+      const imp = await importPptx(pptxPath, join(work, "out"), { force: true });
+      const loaded = loadDeck(imp.deckPath);
+      const blob = JSON.stringify(loaded.deck);
+      assert.match(blob, /FALLBACK_TEXT/);
+      assert.doesNotMatch(blob, /CHOICE_TEXT/);
+    } finally {
+      rmSync(work, { recursive: true, force: true });
+    }
+  });
+
+  it("preserves paragraph and line breaks from a:p and a:br", async () => {
+    const work = mkdtempSync(join(tmpdir(), "openppt-import-br-"));
+    try {
+      const pptxPath = join(work, "br.pptx");
+      const xml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
+  <p:cSld><p:spTree>
+    <p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>
+    <p:grpSpPr/>
+    <p:sp>
+      <p:nvSpPr><p:cNvPr id="2" name="t"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr>
+      <p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="1828800" cy="914400"/></a:xfrm></p:spPr>
+      <p:txBody>
+        <a:bodyPr/>
+        <a:p><a:r><a:t>Line1</a:t></a:r><a:br/><a:r><a:t>Line2</a:t></a:r></a:p>
+        <a:p><a:r><a:t>Para2</a:t></a:r></a:p>
+      </p:txBody>
+    </p:sp>
+  </p:spTree></p:cSld>
+</p:sld>`;
+      await writeMinimalPptx(pptxPath, { slides: [{ xml }] });
+      const imp = await importPptx(pptxPath, join(work, "out"), { force: true });
+      const loaded = loadDeck(imp.deckPath);
+      const text = loaded.deck.pages[0].elements[0].text;
+      assert.match(text, /Line1/);
+      assert.match(text, /Line2/);
+      assert.match(text, /Para2/);
+      assert.match(text, /\n/);
+    } finally {
+      rmSync(work, { recursive: true, force: true });
+    }
+  });
+
+  it("parses slide relationships regardless of attribute order and quotes", async () => {
+    const work = mkdtempSync(join(tmpdir(), "openppt-import-rel-"));
+    try {
+      const pptxPath = join(work, "rel.pptx");
+      const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+      const slide = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
+  <p:cSld><p:spTree>
+    <p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>
+    <p:grpSpPr/>
+    <p:pic>
+      <p:nvPicPr><p:cNvPr id="2" name="pic"/><p:cNvPicPr/><p:nvPr/></p:nvPicPr>
+      <p:blipFill><a:blip r:embed="rId9"/></p:blipFill>
+      <p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="95250" cy="95250"/></a:xfrm></p:spPr>
+    </p:pic>
+  </p:spTree></p:cSld>
+</p:sld>`;
+      const rels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Target='../media/image1.png' Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Id="rId9"/>
+</Relationships>`;
+      await writeMinimalPptx(pptxPath, {
+        slides: [{ xml: slide, rels }],
+        extraFiles: { "ppt/media/image1.png": png },
+      });
+      const imp = await importPptx(pptxPath, join(work, "out"), { force: true });
+      const loaded = loadDeck(imp.deckPath);
+      const images = loaded.deck.pages[0].elements.filter((el) => el.type === "image");
+      assert.equal(images.length, 1);
+      assert.match(images[0].src, /^media\//);
+    } finally {
+      rmSync(work, { recursive: true, force: true });
+    }
+  });
+
+  it("skips grpSp children and records a warning", async () => {
+    const work = mkdtempSync(join(tmpdir(), "openppt-import-grp-"));
+    try {
+      const pptxPath = join(work, "grp.pptx");
+      const extra = `
+      <p:grpSp>
+        <p:nvGrpSpPr><p:cNvPr id="8" name="g"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>
+        <p:grpSpPr><a:xfrm><a:off x="1000000" y="1000000"/><a:ext cx="1000000" cy="1000000"/><a:chOff x="0" y="0"/><a:chExt cx="1000000" cy="1000000"/></a:xfrm></p:grpSpPr>
+        <p:sp>
+          <p:nvSpPr><p:cNvPr id="9" name="inner"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>
+          <p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="100000" cy="100000"/></a:xfrm>
+            <a:solidFill><a:srgbClr val="FF0000"/></a:solidFill>
+          </p:spPr>
+        </p:sp>
+      </p:grpSp>`;
+      await writeMinimalPptx(pptxPath, {
+        slides: [{ xml: slideXmlWithText("OUTSIDE", extra) }],
+      });
+      const imp = await importPptx(pptxPath, join(work, "out"), { force: true });
+      const loaded = loadDeck(imp.deckPath);
+      const shapes = loaded.deck.pages[0].elements.filter((el) => el.type === "shape");
+      assert.equal(shapes.length, 0);
+      assert.ok(imp.warnings.some((w) => /grpSp|grouped/i.test(w)));
+    } finally {
+      rmSync(work, { recursive: true, force: true });
+    }
+  });
+
+  it("removes newly created empty import directories on rollback", () => {
+    const work = mkdtempSync(join(tmpdir(), "openppt-import-empty-dir-"));
+    try {
+      const dest = join(work, "fresh-out");
+      assert.equal(existsSync(dest), false);
+      assert.throws(
+        () =>
+          commitImportOutputs(
+            dest,
+            [
+              { relativePath: "media/a.png", data: "x" },
+              { relativePath: "deck.json", data: "{}" },
+            ],
+            true,
+            {
+              renameSync(from, to) {
+                if (String(to).endsWith("deck.json")) {
+                  throw new Error("injected commit failure");
+                }
+                return renameSync(from, to);
+              },
+            },
+          ),
+        (err) => err instanceof OpenPptError && err.code === ErrorCodes.EXPORT,
+      );
+      assert.equal(existsSync(dest), false);
+    } finally {
+      rmSync(work, { recursive: true, force: true });
     }
   });
 });

@@ -6,7 +6,7 @@ OpenPPT fills the open-source gap left by proprietary “YAML deck + closed WASM
 
 | | |
 |---|---|
-| **Version** | **1.5.0** |
+| **Version** | **1.5.0** (Unreleased items in this README/CHANGELOG need `main@HEAD`, not a 1.5.0 tarball) |
 | **License** | Apache-2.0 (see `LICENSE` + `NOTICE`) |
 | **Runtime** | **Bun** ≥ 1.4 (scripts, lockfile, and shebang use Bun) |
 | **Default exporter** | [pptxgenjs](https://github.com/gitbrent/PptxGenJS) (MIT) |
@@ -51,8 +51,8 @@ bun bin/openppt.js import out/deck.pptx -o recovered/ --force
 bun bin/openppt.js qa fixtures/golden/deck.json
 bun bin/openppt.js qa fixtures/golden/deck.json --fail-on med
 
-# offline HTML preview (--force is required to replace an existing file)
-bun bin/openppt.js preview fixtures/golden/deck.json -o out/preview.html
+# offline HTML preview (--force optional on first write, required to replace)
+bun bin/openppt.js preview fixtures/golden/deck.json -o out/preview.html --force
 
 # pitch skeleton (cover + TOC + body + final)
 bun bin/openppt.js export templates/pitch-skeleton/deck.json -o out/pitch.pptx --force
@@ -66,7 +66,7 @@ Thin skill for Claude Code / Codex / Cursor (and any SKILL.md host):
 
 ```bash
 bun run install:skill
-# or: bash scripts/install-skill.sh
+# or: bash scripts/install-skill.sh [--force]
 ```
 
 Installs `openppt` under `~/.agents/skills` (and `~/.claude` / `~/.codex` / `~/.cursor` / `~/.grok` when those trees exist). Source of truth: [`skills/openppt/SKILL.md`](skills/openppt/SKILL.md).
@@ -154,10 +154,15 @@ Default export **refuses** to write a PPTX when:
 | JSON Schema mismatch | `SCHEMA_INVALID` |
 | Element outside canvas | `BOUNDS_OUT_OF_RANGE` |
 | Missing local image | `MEDIA_MISSING` |
+| Image magic/size/fit rejected | `MEDIA_TYPE_INVALID` |
 | Unresolved `$token` | `THEME_COLOR_UNRESOLVED` |
 | Duplicate page `id` | `SCHEMA_INVALID` |
 | Duplicate element `id` (deck-wide) | `SCHEMA_INVALID` |
 | Documented resource ceiling exceeded | `RESOURCE_LIMIT_EXCEEDED` |
+| Layout group overflow / non-finite flex | `LAYOUT_INVALID` |
+| File unreadable / parse / missing path | `IO_ERROR` |
+| Export/write failed | `EXPORT_FAILED` |
+| `init` / `from-outline` target already exists | `ALREADY_EXISTS` |
 
 Duplicate-ID rules and resource ceilings are enforced by `validateDeck`, not by
 the JSON Schema; schema alone cannot express cross-document uniqueness or the

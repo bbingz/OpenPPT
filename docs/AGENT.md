@@ -10,12 +10,13 @@ bun install
 # choose one creation route for a new project
 bun bin/openppt.js init path/to/project --skeleton --theme magazine --title "My deck"
 # OR
-bun bin/openppt.js from-outline outline.md -o path/to/outline-project --theme report
-bun bin/openppt.js validate path/to/deck.json
-bun bin/openppt.js export  path/to/deck.json -o path/to/deck.pptx --force
-bun bin/openppt.js qa      path/to/deck.json
-bun bin/openppt.js qa      path/to/deck.json --fail-on med   # CI-stricter
-bun bin/openppt.js preview path/to/deck.json -o path/to/preview.html
+bun bin/openppt.js from-outline outline.md -o path/to/project --theme report
+bun bin/openppt.js validate path/to/project/deck.json
+bun bin/openppt.js export  path/to/project/deck.json -o path/to/project/deck.pptx --force
+bun bin/openppt.js qa      path/to/project/deck.json
+bun bin/openppt.js qa      path/to/project/deck.json --fail-on med   # CI-stricter
+# preview: --force is optional on first write, required to replace an existing file
+bun bin/openppt.js preview path/to/project/deck.json -o path/to/project/preview.html --force
 bun bin/openppt.js import  path/to/file.pptx -o path/to/project/ --force
 ```
 
@@ -41,7 +42,7 @@ tokens: `{{DECK_TITLE}}`, `{{TITLE}}`, `{{SUBTITLE}}`, `{{FOOTER}}`,
 |---|---|
 | Version | `"openppt-1"` only |
 | Bounds | `[x,y,w,h]` CSS px, finite, inside `size` (max 5376 per side) |
-| fontSize | **points**, not CSS px |
+| fontSize | **points**, not CSS px (finite, exclusive 0 through 4000) |
 | IDs | page ids and element ids unique **deck-wide** |
 | Images | `src` must match `media/...`; extension must match file magic |
 | No remote images | no `http(s):` in default path |
@@ -54,7 +55,7 @@ tokens: `{{DECK_TITLE}}`, `{{TITLE}}`, `{{SUBTITLE}}`, `{{FOOTER}}`,
 - `image` — local `media/*`
 - `chart` — `bar` \| `line` \| `pie` \| `doughnut` \| `area` + `series[{name,labels?,values}]`
 - `table` — `rows` (cells as strings or `{text, fill?, bold?}`); optional `header`, `colW`
-- `group` — **authoring-only layout helper** (not in the normalized leaf schema and not drawn): `layout: stack|row|grid|layer`, `bounds`, `children` with `height`/`width`/`flex`; `loadDeck` and `validateDeck` expand it before leaf-schema validation (see `docs/IR.md`, `fixtures/layout-demo/`, `demos/sspai-113139/`)
+- `group` — **authoring-only layout helper** (not in the normalized leaf schema and not drawn): `layout: stack|row|grid|layer`, `bounds`, `children` with `height`/`width`/`flex`; `loadDeck` and `validateDeck` expand it before leaf-schema validation (see `docs/IR.md`, `fixtures/layout-demo/`)
 
 ## Multi-file decks
 
@@ -76,7 +77,13 @@ Page files are full page objects (`id` + `elements`). Paths must stay inside the
 4. [`skills/openppt/SKILL.md`](../skills/openppt/SKILL.md) — installable agent skill
 
 The HTML preview is a structural approximation, not pixel-faithful PowerPoint
-rendering; charts are placeholders. Use the exported PPTX for final visual QA.
+rendering; charts are placeholders. `--force` is optional on the first preview
+write and required to replace an existing file. Use the exported PPTX for final
+visual QA.
+
+Import is lossy. Grouped shapes (`p:grpSp`) are skipped with a warning because
+child offsets are relative to the group; slide order follows `p:sldIdLst` plus
+`presentation.xml.rels`, not `slideN.xml` filenames.
 
 ## Anti-patterns
 
@@ -89,4 +96,5 @@ rendering; charts are placeholders. Use the exported PPTX for final visual QA.
 
 ```bash
 bun run install:skill
+# existing installs are left in place unless you pass --force (a .bak is kept)
 ```

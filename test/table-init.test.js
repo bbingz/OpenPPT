@@ -15,7 +15,9 @@ import { validateDeck } from "../src/validate.js";
 import { compileToPptx } from "../src/compile.js";
 import { importPptx } from "../src/import-pptx.js";
 import { initProject } from "../src/init.js";
+import { projectFromOutline } from "../src/from-outline.js";
 import { analyzeLayout } from "../src/qa.js";
+import { OpenPptError, ErrorCodes } from "../src/errors.js";
 import { openPptx, readPptxEntry } from "./helpers/pptx.js";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -69,6 +71,72 @@ describe("tables + init", () => {
       assert.ok(tables.length >= 1, "expected imported table");
       assert.ok(tables[0].rows.length >= 2);
       assert.match(JSON.stringify(tables[0].rows), /Feature|Charts|Tables/);
+    } finally {
+      rmSync(work, { recursive: true, force: true });
+    }
+  });
+
+  it("applies header style to padded missing header cells", async () => {
+    const work = mkdtempSync(join(tmpdir(), "openppt-hdr-pad-"));
+    try {
+      const out = join(work, "hdr.pptx");
+      await compileToPptx(
+        {
+          version: "openppt-1",
+          size: [960, 540],
+          theme: { colors: { primary: "#112233", text: "#111827" } },
+          pages: [
+            {
+              id: "p1",
+              elements: [
+                {
+                  id: "tbl",
+                  type: "table",
+                  bounds: [20, 20, 400, 120],
+                  header: true,
+                  rows: [
+                    ["Only"],
+                    ["a", "b"],
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+        out,
+        { projectRoot: work, force: true },
+      );
+      const pptx = await openPptx(out);
+      const xml = await readPptxEntry(pptx, "ppt/slides/slide1.xml");
+      const fills = [...xml.matchAll(/srgbClr val="112233"/g)];
+      assert.ok(fills.length >= 2, "padded header cell should reuse header fill");
+    } finally {
+      rmSync(work, { recursive: true, force: true });
+    }
+  });
+
+  it("init and from-outline use ALREADY_EXISTS when deck.json is present", () => {
+    const work = mkdtempSync(join(tmpdir(), "openppt-already-"));
+    try {
+      const dest = join(work, "proj");
+      initProject(dest, { title: "First" });
+      assert.throws(
+        () => initProject(dest, { title: "Second" }),
+        (err) => {
+          assert.ok(err instanceof OpenPptError);
+          assert.equal(err.code, ErrorCodes.ALREADY_EXISTS);
+          return true;
+        },
+      );
+      assert.throws(
+        () =>
+          projectFromOutline(join(root, "fixtures/outline-sample.md"), dest),
+        (err) => {
+          assert.ok(err instanceof OpenPptError);
+          assert.equal(err.code, ErrorCodes.ALREADY_EXISTS);
+          return true;
+        },
+      );
     } finally {
       rmSync(work, { recursive: true, force: true });
     }

@@ -9,7 +9,8 @@ export class OpenPptError extends Error {
    * @param {Record<string, unknown>} [details]
    */
   constructor(code, message, details = {}) {
-    super(message);
+    const cause = details?.cause;
+    super(message, cause !== undefined ? { cause } : undefined);
     this.name = "OpenPptError";
     this.code = code;
     this.details = details;
@@ -26,6 +27,7 @@ export const ErrorCodes = {
   LAYOUT: "LAYOUT_INVALID",
   IO: "IO_ERROR",
   EXPORT: "EXPORT_FAILED",
+  ALREADY_EXISTS: "ALREADY_EXISTS",
 };
 
 /** QA issue severity rank (higher = worse). */

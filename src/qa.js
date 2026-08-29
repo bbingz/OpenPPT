@@ -49,18 +49,44 @@ function overlapArea(a, b) {
  * @returns {{ ok: boolean, issues: Array<{ severity: string, code: string, pageId: string, message: string, details?: object }> }}
  */
 /**
- * Relative luminance 0–1 for #RRGGBB / #RRGGBBAA (ignores alpha for contrast).
  * @param {string} hex
+ * @returns {{ r: number, g: number, b: number, a: number } | null}
  */
-function luminance(hex) {
+function parseRgba(hex) {
   if (!hex || typeof hex !== "string" || !hex.startsWith("#")) return null;
   const h = hex.slice(1);
   if (h.length !== 6 && h.length !== 8) return null;
-  const r = Number.parseInt(h.slice(0, 2), 16) / 255;
-  const g = Number.parseInt(h.slice(2, 4), 16) / 255;
-  const b = Number.parseInt(h.slice(4, 6), 16) / 255;
-  const lin = (c) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
+  return {
+    r: Number.parseInt(h.slice(0, 2), 16),
+    g: Number.parseInt(h.slice(2, 4), 16),
+    b: Number.parseInt(h.slice(4, 6), 16),
+    a: h.length === 8 ? Number.parseInt(h.slice(6, 8), 16) / 255 : 1,
+  };
+}
+
+function compositeOver(fg, bg) {
+  const a = fg.a + bg.a * (1 - fg.a);
+  if (a <= 0) return { r: bg.r, g: bg.g, b: bg.b, a: 0 };
+  return {
+    r: (fg.r * fg.a + bg.r * bg.a * (1 - fg.a)) / a,
+    g: (fg.g * fg.a + bg.g * bg.a * (1 - fg.a)) / a,
+    b: (fg.b * fg.a + bg.b * bg.a * (1 - fg.a)) / a,
+    a,
+  };
+}
+
+function luminanceRgba(c) {
+  const r = c.r / 255;
+  const g = c.g / 255;
+  const b = c.b / 255;
+  const lin = (ch) => (ch <= 0.03928 ? ch / 12.92 : ((ch + 0.055) / 1.055) ** 2.4);
   return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+}
+
+function contrastRatio(a, b) {
+  const l1 = luminanceRgba(a);
+  const l2 = luminanceRgba(b);
+  return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
 }
 
 /**
@@ -70,8 +96,34 @@ function luminance(hex) {
  */
 function resolveMaybe(color, colors) {
   if (!color) return null;
-  if (color.startsWith("$")) return colors[color.slice(1)] || null;
+  if (color.startsWith("$")) {
+    const key = color.slice(1);
+    return Object.hasOwn(colors, key) ? colors[key] : null;
+  }
   return color;
+}
+
+function textStyleSamples(el, colors) {
+  const parentColor = resolveMaybe(el.color, colors) || "#111827";
+  const parentFs = el.fontSize || 18;
+  if (!Array.isArray(el.text)) {
+    return [{ color: parentColor, fontSize: parentFs, label: el.id }];
+  }
+  return el.text.map((run, index) => ({
+    color: resolveMaybe(run.color, colors) || parentColor,
+    fontSize: run.fontSize || parentFs,
+    label: `${el.id}.run[${index}]`,
+  }));
+}
+
+function overlapSeverity(a, b) {
+  const textOnShape =
+    (a.type === "text" && b.type === "shape") ||
+    (b.type === "text" && a.type === "shape");
+  if (textOnShape) return null;
+  if (a.type === "text" && b.type === "text") return "high";
+  if (a.type === "shape" && b.type === "shape") return "med";
+  return "low";
 }
 
 export function analyzeLayout(deck) {
@@ -98,7 +150,13 @@ export function analyzeLayout(deck) {
       resolveMaybe(page.background?.color, colors) ||
       resolveMaybe(colors.background, colors) ||
       "#FFFFFF";
-    const pageLum = luminance(pageBg);
+    let pageRgba = parseRgba(pageBg) || { r: 255, g: 255, b: 255, a: 1 };
+    let backgroundHeuristic = null;
+    if (pageRgba.a < 0.01) {
+      pageRgba = { r: 255, g: 255, b: 255, a: 1 };
+      backgroundHeuristic =
+        "transparent background; contrast assumes an opaque white page";
+    }
 
     let covered = 0;
     for (let i = 0; i < els.length; i += 1) {
@@ -124,34 +182,34 @@ export function analyzeLayout(deck) {
         }
       }
 
-      // Low contrast text vs page background (rough)
-      if (a.type === "text" && pageLum !== null) {
-        const rawColor = resolveMaybe(a.color, colors) || "#111827";
-        const textLum = luminance(rawColor);
-        if (textLum !== null) {
-          const ratio =
-            (Math.max(pageLum, textLum) + 0.05) /
-            (Math.min(pageLum, textLum) + 0.05);
+      if (a.type === "text") {
+        const samples = textStyleSamples(a, colors);
+        for (const sample of samples) {
+          const fg = parseRgba(sample.color);
+          if (!fg) continue;
+          const composed = compositeOver(fg, pageRgba);
+          const ratio = contrastRatio(composed, pageRgba);
           if (ratio < 2.5) {
             issues.push({
               severity: "med",
               code: "LOW_CONTRAST",
               pageId: page.id,
-              message: `Text ${a.id} may have low contrast vs page background (≈${ratio.toFixed(1)}:1)`,
-              details: { text: rawColor, background: pageBg, ratio },
+              message: `Text ${sample.label} may have low contrast vs page background (≈${ratio.toFixed(1)}:1)`,
+              details: {
+                text: sample.color,
+                background: pageBg,
+                ratio,
+                ...(backgroundHeuristic ? { heuristic: backgroundHeuristic } : {}),
+              },
             });
           }
         }
-      }
 
-      // CJK-aware text capacity heuristic (rough)
-      if (a.type === "text") {
         const raw = Array.isArray(a.text)
           ? a.text.map((r) => r.text).join("")
           : String(a.text ?? "");
         const chars = raw.replace(/\s/g, "").length;
-        const fs = a.fontSize || 18;
-        // CJK ≈ full-width; latin average ~0.55em — use 0.9em as mixed default
+        const fs = Math.max(...samples.map((sample) => sample.fontSize), 1);
         const cap = Math.floor((w / (fs * 0.9)) * (h / (fs * 1.35)));
         if (chars > 8 && cap > 0 && chars > cap * 1.25) {
           issues.push({
@@ -165,25 +223,20 @@ export function analyzeLayout(deck) {
       }
       for (let j = i + 1; j < els.length; j += 1) {
         const b = els[j];
-        // Skip intentional text-over-shape of same area class loosely: only flag significant overlap
         const area = overlapArea(a.bounds, b.bounds);
         if (area <= 0) continue;
         const minArea = Math.min(a.bounds[2] * a.bounds[3], b.bounds[2] * b.bounds[3]);
         const ratio = minArea > 0 ? area / minArea : 0;
-        // Text on shape is common (label on ellipse) — only high severity when both text or both shapes with >30%
-        const bothText = a.type === "text" && b.type === "text";
-        const bothShape = a.type === "shape" && b.type === "shape";
-        if (ratio >= 0.3 && (bothText || bothShape)) {
-          issues.push({
-            severity: bothText ? "high" : "med",
-            code: "OVERLAP",
-            pageId: page.id,
-            message: `Elements ${a.id} and ${b.id} overlap (~${Math.round(ratio * 100)}% of smaller)`,
-            details: { a: a.id, b: b.id, ratio },
-          });
-        } else if (ratio >= 0.85 && a.type !== b.type) {
-          // nearly full cover text-on-shape is OK; ignore
-        }
+        if (ratio < 0.3) continue;
+        const severity = overlapSeverity(a, b);
+        if (!severity) continue;
+        issues.push({
+          severity,
+          code: "OVERLAP",
+          pageId: page.id,
+          message: `Elements ${a.id} and ${b.id} overlap (~${Math.round(ratio * 100)}% of smaller)`,
+          details: { a: a.id, b: b.id, ratio },
+        });
       }
     }
 

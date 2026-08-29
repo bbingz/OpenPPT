@@ -2,6 +2,17 @@
 
 ## Changelog Memo
 
+### 2026-08-29
+
+- [安全] 数值量级 / 主题原型链 / 超大 PNG / import 正则 DoS / 页序 / 未类型化错误 / 非 force 导出 TOCTOU 已按第五轮工单 P0 fail-closed 修复。
+- [修复] href 挂到 run、SVG fit、零宽边框、run 样式、RGBA、flex 溢出、饼图图例、layer bounds 拷贝、表头补齐、import AlternateContent/换行/关系/grpSp/空目录回滚。
+- [变更] QA 按 alpha 合成与 run 级样式计对比度；异类重叠仅白名单 text-on-shape 豁免。CLI `--`、重复 flag 警告、缺命令走 stderr、`ALREADY_EXISTS`。
+- [测试] 回归补进 validate/layout/compile/import-qa-preview/cli/table-init/charts/resource-limits；禁止再往 hardening 堆。
+- [文档] SKILL/AGENT/README 路径与错误码、preview `--force`、Unreleased≠1.5.0 tarball、templates fragments 与 pitch-skeleton 不等价。
+- [CI] canary continue-on-error、contents:read、macOS/Windows 1.4.0、actions SHA；audit clean 不再短路探针；pack 后 validate golden + init --skeleton。
+- [验证] 见本轮 `bun test ./test/` 数字；工作区未 commit、未 push。
+- [风险] `colW` 未按 1584pt 封顶（已有 1e308/1e307 归一回归）；grouped shapes 导入跳过而非累加 xfrm。
+
 ### 2026-08-25
 
 - [修复] `validateDeck` 和布局展开现在返回与调用方深度隔离的 IR，leaf-only deck 也不再共享 page、element 或嵌套字段。

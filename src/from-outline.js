@@ -263,7 +263,7 @@ export function projectFromOutline(mdPath, outDir, options = {}) {
   const deckPath = join(dest, "deck.json");
   if (existsSync(deckPath) && !force) {
     throw new OpenPptError(
-      ErrorCodes.EXPORT,
+      ErrorCodes.ALREADY_EXISTS,
       `deck.json already exists in ${dest} (pass --force)`,
     );
   }

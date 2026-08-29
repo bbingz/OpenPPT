@@ -188,6 +188,8 @@ function filesContaining(directory, literal, root) {
 }
 
 function pathsContaining(paths, literal, root) {
+  // Literal substring scan only. Concatenated or computed requires such as
+  // require("image" + "-size") or require(dynamicName) are not detected.
   const canonicalRoot = realpathSync(root);
   return paths
     .filter((path) => readFileSync(path, "utf8").includes(literal))
@@ -403,12 +405,17 @@ export function assertReachabilityEvidence(evidence) {
 
 async function probeRuntimeReachability(root) {
   const { compileToBuffer, loadDeck } = await import("../src/index.js");
-  const { deck, projectRoot } = loadDeck(
-    join(root, "fixtures/golden/deck.json"),
-  );
-  const bytes = await compileToBuffer(deck, { projectRoot });
-  if (bytes.length < 4 || bytes[0] !== 0x50 || bytes[1] !== 0x4b) {
-    throw new Error("Runtime reachability probe did not produce a PPTX ZIP");
+  for (const fixture of [
+    "fixtures/golden/deck.json",
+    "fixtures/chart-demo/deck.json",
+  ]) {
+    const { deck, projectRoot } = loadDeck(join(root, fixture));
+    const bytes = await compileToBuffer(deck, { projectRoot });
+    if (bytes.length < 4 || bytes[0] !== 0x50 || bytes[1] !== 0x4b) {
+      throw new Error(
+        `Runtime reachability probe did not produce a PPTX ZIP for ${fixture}`,
+      );
+    }
   }
 
   const requireFromRoot = createRequire(join(root, "package.json"));
@@ -491,6 +498,9 @@ export function verifyProductionAudit(root) {
         `Production audit failed with no parsed findings (exit ${result.status})`,
       );
     }
+    assertReachabilityEvidence(collectReachabilityEvidence(root));
+    assertDependencyChain(root);
+    assertRuntimeUnreachable(root);
     return decision;
   }
   if (result.status !== 1) {

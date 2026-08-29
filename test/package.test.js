@@ -29,7 +29,7 @@ function runBun(args, cwd) {
 }
 
 describe("package contract", () => {
-  it("packs, installs, and invokes the shipped bin", { timeout: 30_000 }, () => {
+  it("packs, installs, and invokes the shipped bin", { timeout: 45_000 }, () => {
     const work = mkdtempSync(join(tmpdir(), "openppt-package-"));
     try {
       const archiveDir = join(work, "archive");
@@ -56,6 +56,24 @@ describe("package contract", () => {
       runBun(["add", archive, "--ignore-scripts"], consumerDir);
       const version = runBun(["run", "--silent", "openppt", "--version"], consumerDir);
       assert.equal(version, pkg.version);
+
+      const packedRoot = join(consumerDir, "node_modules", "openppt");
+      runBun(
+        [
+          "run",
+          "--silent",
+          "openppt",
+          "validate",
+          join(packedRoot, "fixtures/golden/deck.json"),
+        ],
+        consumerDir,
+      );
+      const skeletonDir = join(consumerDir, "skel");
+      runBun(
+        ["run", "--silent", "openppt", "init", skeletonDir, "--skeleton"],
+        consumerDir,
+      );
+      assert.ok(existsSync(join(skeletonDir, "deck.json")));
     } finally {
       rmSync(work, { recursive: true, force: true });
     }

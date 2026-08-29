@@ -54,7 +54,7 @@ export function initProject(outDir, options = {}) {
 
   if (existsSync(deckPath) && !force) {
     throw new OpenPptError(
-      ErrorCodes.EXPORT,
+      ErrorCodes.ALREADY_EXISTS,
       `deck.json already exists in ${dest} (pass --force)`,
     );
   }

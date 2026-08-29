@@ -19,7 +19,7 @@ The machine-readable [schema](../schema/openppt-ir.schema.json) describes normal
 - **`fontSize` is points** (pptxgenjs / PowerPoint typography), **not** CSS px.
   Do not assume 1px = 1pt for layout math; a box of height 24px with
   `fontSize: 24` is intentionally larger type than the box in pure CSS terms.
-- Color `#RRGGBBAA`: alpha maps to pptxgenjs `transparency` (0–100) on text/shape fills.
+- Color `#RRGGBBAA`: alpha maps to pptxgenjs `transparency` (0–100) on text, shape fill/line, slide background, and table cell fill/text.
 
 ## Identifiers
 

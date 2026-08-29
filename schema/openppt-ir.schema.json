@@ -116,7 +116,7 @@
             }
           ]
         },
-        "fontSize": { "type": "number", "exclusiveMinimum": 0 },
+        "fontSize": { "type": "number", "exclusiveMinimum": 0, "maximum": 4000 },
         "fontFamily": { "type": "string" },
         "color": { "$ref": "#/$defs/color" },
         "bold": { "type": "boolean" },
@@ -142,7 +142,7 @@
       "required": ["text"],
       "properties": {
         "text": { "type": "string" },
-        "fontSize": { "type": "number", "exclusiveMinimum": 0 },
+        "fontSize": { "type": "number", "exclusiveMinimum": 0, "maximum": 4000 },
         "fontFamily": { "type": "string" },
         "color": { "$ref": "#/$defs/color" },
         "bold": { "type": "boolean" },
@@ -163,7 +163,7 @@
         },
         "fill": { "$ref": "#/$defs/color" },
         "lineColor": { "$ref": "#/$defs/color" },
-        "lineWidth": { "type": "number", "minimum": 0 }
+        "lineWidth": { "type": "number", "minimum": 0, "maximum": 1584 }
       }
     },
     "imageElement": {
@@ -237,7 +237,7 @@
             "align": { "type": "string", "enum": ["left", "center", "right"] },
             "color": { "$ref": "#/$defs/color" },
             "fill": { "$ref": "#/$defs/color" },
-            "fontSize": { "type": "number", "exclusiveMinimum": 0 }
+            "fontSize": { "type": "number", "exclusiveMinimum": 0, "maximum": 4000 }
           }
         }
       ]
@@ -270,9 +270,9 @@
           "type": "boolean",
           "description": "Style first row as header (bold + primary fill) when cells are plain strings"
         },
-        "fontSize": { "type": "number", "exclusiveMinimum": 0 },
+        "fontSize": { "type": "number", "exclusiveMinimum": 0, "maximum": 4000 },
         "borderColor": { "$ref": "#/$defs/color" },
-        "borderWidth": { "type": "number", "minimum": 0 }
+        "borderWidth": { "type": "number", "minimum": 0, "maximum": 1584 }
       }
     }
   }

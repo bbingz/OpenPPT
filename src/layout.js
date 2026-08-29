@@ -110,7 +110,7 @@ function toLeaf(child, bounds) {
   // height/width on children are layout hints only (unless already a group)
   delete leaf.height;
   delete leaf.width;
-  leaf.bounds = bounds;
+  leaf.bounds = Array.isArray(bounds) ? bounds.slice() : bounds;
   return leaf;
 }
 
@@ -268,7 +268,7 @@ function expandGroup(group, ctx) {
     for (const child of rawChildren) {
       if (child.type === "group") {
         const nested = clone(child);
-        nested.bounds = bounds;
+        nested.bounds = bounds.slice();
         layerLeaves.push(...expandGroup(nested, `${ctx}/${group.id}`));
       } else {
         layerLeaves.push(toLeaf(child, bounds));
@@ -404,7 +404,7 @@ function expandGroup(group, ctx) {
       const { child } = items[i];
       if (child.type === "group") {
         const nested = clone(child);
-        nested.bounds = bounds;
+        nested.bounds = bounds.slice();
         leaves.push(...expandGroup(nested, `${ctx}/${group.id}`));
       } else {
         leaves.push(toLeaf(child, bounds));
@@ -422,8 +422,32 @@ function expandGroup(group, ctx) {
   let fixedMain = 0;
   let flexSum = 0;
   for (const it of items) {
-    if (it.flex > 0) flexSum += it.flex;
-    else fixedMain += it.main;
+    if (it.flex > 0) {
+      if (!Number.isFinite(it.flex)) {
+        throw new OpenPptError(
+          ErrorCodes.LAYOUT,
+          `Group ${group.id} child ${it.child.id} flex is not finite`,
+          { groupId: group.id, childId: it.child.id, flex: it.flex },
+        );
+      }
+      flexSum += it.flex;
+    } else {
+      if (!Number.isFinite(it.main)) {
+        throw new OpenPptError(
+          ErrorCodes.LAYOUT,
+          `Group ${group.id} child ${it.child.id} size is not finite`,
+          { groupId: group.id, childId: it.child.id, size: it.main },
+        );
+      }
+      fixedMain += it.main;
+    }
+  }
+  if (flexSum > 0 && !Number.isFinite(flexSum)) {
+    throw new OpenPptError(
+      ErrorCodes.LAYOUT,
+      `Group ${group.id} flex weights overflow to a non-finite total`,
+      { groupId: group.id, flexSum },
+    );
   }
 
   const free = mainSize - fixedMain - gapTotal;
@@ -445,7 +469,15 @@ function expandGroup(group, ctx) {
   const mains = items.map((it) => {
     if (it.flex > 0) {
       if (flexSum <= 0) return 0;
-      return (free * it.flex) / flexSum;
+      const share = free * (it.flex / flexSum);
+      if (!Number.isFinite(share)) {
+        throw new OpenPptError(
+          ErrorCodes.LAYOUT,
+          `Group ${group.id} child ${it.child.id} flex resolved to a non-finite size`,
+          { groupId: group.id, childId: it.child.id, flex: it.flex, flexSum, free },
+        );
+      }
+      return share;
     }
     return it.main;
   });
@@ -513,7 +545,7 @@ function expandGroup(group, ctx) {
 
     if (it.child.type === "group") {
       const nested = clone(it.child);
-      nested.bounds = bounds;
+      nested.bounds = bounds.slice();
       leaves.push(...expandGroup(nested, `${ctx}/${group.id}`));
     } else {
       leaves.push(toLeaf(it.child, bounds));

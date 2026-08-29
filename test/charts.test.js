@@ -8,6 +8,7 @@ import { loadDeck } from "../src/load.js";
 import { validateDeck } from "../src/validate.js";
 import { compileToPptx } from "../src/compile.js";
 import { openPptx, readPptxEntry } from "./helpers/pptx.js";
+import { parseChartXml } from "../src/import-pptx.js";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -38,6 +39,29 @@ describe("charts (shipped)", () => {
       assert.match(xml, /Quarterly results|a:t/);
     } finally {
       rmSync(outDir, { recursive: true, force: true });
+    }
+  });
+
+  it("parses line, pie, doughnut, and area chart XML fragments", () => {
+    function fragment(kind, title = "T") {
+      return `<c:chartSpace>
+        <c:title><a:t>${title}</a:t></c:title>
+        <c:${kind}Chart>
+          <c:ser>
+            <c:tx><c:v>Series 1</c:v></c:tx>
+            <c:val><c:numCache><c:v>1</c:v><c:v>3</c:v></c:numCache></c:val>
+            <c:cat><c:strCache><c:v>A</c:v><c:v>B</c:v></c:strCache></c:cat>
+          </c:ser>
+        </c:${kind}Chart>
+      </c:chartSpace>`;
+    }
+    for (const kind of ["line", "pie", "doughnut", "area"]) {
+      const parsed = parseChartXml(fragment(kind));
+      assert.equal(parsed.chartType, kind);
+      assert.equal(parsed.title, "T");
+      assert.equal(parsed.series.length, 1);
+      assert.deepEqual(parsed.series[0].values, [1, 3]);
+      assert.deepEqual(parsed.series[0].labels, ["A", "B"]);
     }
   });
 });

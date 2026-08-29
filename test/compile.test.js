@@ -49,6 +49,11 @@ describe("compileToPptx (shipped)", () => {
     });
     assert.ok(existsSync(result.outputPath));
     assert.ok(statSync(result.outputPath).size > 0);
+    const pptx = await openPptx(result.outputPath);
+    assert.ok(pptx.file("ppt/slides/slide1.xml"));
+    const xml = await readPptxEntry(pptx, "ppt/slides/slide1.xml");
+    assert.match(xml, /<p:sld[\s>]|<p:cSld/);
+    assert.match(xml, /a:t/);
   });
 
   it("compileToBuffer returns PPTX (ZIP) bytes without writing to disk", async () => {
@@ -202,5 +207,287 @@ describe("compileToPptx (shipped)", () => {
     );
     // source still present
     assert.ok(existsSync(deckPath));
+  });
+
+  it("rejects fontSize 1e308 and does not write a PPTX", async () => {
+    const out = join(outDir, "should-not-exist-fontsize.pptx");
+    await assert.rejects(
+      () =>
+        compileToPptx(
+          {
+            version: "openppt-1",
+            size: [960, 540],
+            pages: [
+              {
+                id: "p1",
+                elements: [
+                  {
+                    id: "t1",
+                    type: "text",
+                    bounds: [0, 0, 100, 40],
+                    text: "x",
+                    fontSize: 1e308,
+                  },
+                ],
+              },
+            ],
+          },
+          out,
+          { projectRoot: outDir, force: true },
+        ),
+      (err) => {
+        assert.ok(err instanceof OpenPptError);
+        assert.equal(err.code, ErrorCodes.SCHEMA);
+        return true;
+      },
+    );
+    assert.equal(existsSync(out), false);
+  });
+
+  it("installs non-force exports without clobbering via exclusive link", async () => {
+    const { deck, projectRoot, sourcePath } = loadDeck(
+      join(root, "fixtures/golden/deck.json"),
+    );
+    const out = join(outDir, "exclusive-install.pptx");
+    await assert.rejects(
+      () =>
+        compileToPptx(deck, out, {
+          projectRoot,
+          force: false,
+          sourcePath,
+          operations: {
+            linkSync() {
+              const err = new Error("injected exclusive-create collision");
+              err.code = "EEXIST";
+              throw err;
+            },
+            renameSync() {
+              throw new Error("renameSync must not run when force is false");
+            },
+          },
+        }),
+      (err) => {
+        assert.ok(err instanceof OpenPptError);
+        assert.equal(err.code, ErrorCodes.EXPORT);
+        return true;
+      },
+    );
+    assert.equal(existsSync(out), false);
+  });
+
+  it("writes run-level hyperlinks and never emits rIdundefined", async () => {
+    const out = join(outDir, "href.pptx");
+    await compileToPptx(
+      {
+        version: "openppt-1",
+        size: [960, 540],
+        pages: [
+          {
+            id: "p1",
+            elements: [
+              {
+                id: "link",
+                type: "text",
+                bounds: [20, 20, 400, 40],
+                href: "https://example.com/openppt",
+                text: [
+                  { text: "Hello", bold: true },
+                  { text: "World", bold: false },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+      out,
+      { projectRoot: outDir, force: true },
+    );
+    const pptx = await openPptx(out);
+    const slide = await readPptxEntry(pptx, "ppt/slides/slide1.xml");
+    const rels = await readPptxEntry(pptx, "ppt/slides/_rels/slide1.xml.rels");
+    assert.doesNotMatch(slide, /rIdundefined/);
+    assert.doesNotMatch(rels, /rIdundefined/);
+    assert.match(slide, /hlinkClick/);
+    assert.match(rels, /example\.com\/openppt/);
+  });
+
+  it("materializes run.bold false instead of inheriting parent bold", async () => {
+    const out = join(outDir, "run-bold.pptx");
+    await compileToPptx(
+      {
+        version: "openppt-1",
+        size: [960, 540],
+        pages: [
+          {
+            id: "p1",
+            elements: [
+              {
+                id: "mixed",
+                type: "text",
+                bounds: [20, 20, 400, 40],
+                bold: true,
+                text: [
+                  { text: "BOLD" },
+                  { text: "plain", bold: false },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+      out,
+      { projectRoot: outDir, force: true },
+    );
+    const pptx = await openPptx(out);
+    const slide = await readPptxEntry(pptx, "ppt/slides/slide1.xml");
+    assert.match(slide, /<a:t>BOLD<\/a:t>/);
+    assert.match(slide, /<a:t>plain<\/a:t>/);
+    const boldRun = slide.split("<a:t>BOLD</a:t>")[0];
+    const plainRun = slide.split("<a:t>plain</a:t>")[0].split("<a:r>").pop();
+    assert.match(boldRun, /b="1"/);
+    assert.doesNotMatch(plainRun, /b="1"/);
+  });
+
+  it("emits no stroke for zero-width shape and table borders", async () => {
+    const out = join(outDir, "zero-border.pptx");
+    await compileToPptx(
+      {
+        version: "openppt-1",
+        size: [960, 540],
+        pages: [
+          {
+            id: "p1",
+            elements: [
+              {
+                id: "s",
+                type: "shape",
+                bounds: [10, 10, 100, 80],
+                shape: "rect",
+                fill: "#2563EB",
+                lineWidth: 0,
+              },
+              {
+                id: "tbl",
+                type: "table",
+                bounds: [10, 120, 300, 80],
+                borderWidth: 0,
+                rows: [["A", "B"]],
+              },
+            ],
+          },
+        ],
+      },
+      out,
+      { projectRoot: outDir, force: true },
+    );
+    const pptx = await openPptx(out);
+    const slide = await readPptxEntry(pptx, "ppt/slides/slide1.xml");
+    assert.match(slide, /<a:ln[^>]*><a:noFill\/>|<a:ln[^>]*w="0"/);
+  });
+
+  it("passes RGBA transparency through background, lines, and table fills", async () => {
+    const out = join(outDir, "rgba.pptx");
+    await compileToPptx(
+      {
+        version: "openppt-1",
+        size: [960, 540],
+        pages: [
+          {
+            id: "p1",
+            background: { type: "solid", color: "#FF000080" },
+            elements: [
+              {
+                id: "s",
+                type: "shape",
+                bounds: [10, 10, 80, 80],
+                shape: "rect",
+                fill: "#00FF0080",
+                lineColor: "#0000FF80",
+                lineWidth: 2,
+              },
+              {
+                id: "tbl",
+                type: "table",
+                bounds: [10, 120, 300, 80],
+                rows: [[{ text: "x", fill: "#00FF0080", color: "#00000080" }]],
+              },
+            ],
+          },
+        ],
+      },
+      out,
+      { projectRoot: outDir, force: true },
+    );
+    const pptx = await openPptx(out);
+    const slide = await readPptxEntry(pptx, "ppt/slides/slide1.xml");
+    assert.match(slide, /alpha|alphaModFix|alphaOff/i);
+  });
+
+  it("shows a legend or data labels for a single-series pie chart", async () => {
+    const out = join(outDir, "pie.pptx");
+    await compileToPptx(
+      {
+        version: "openppt-1",
+        size: [960, 540],
+        pages: [
+          {
+            id: "p1",
+            elements: [
+              {
+                id: "pie",
+                type: "chart",
+                bounds: [40, 40, 400, 300],
+                chartType: "pie",
+                series: [{ name: "Share", values: [40, 60], labels: ["A", "B"] }],
+              },
+            ],
+          },
+        ],
+      },
+      out,
+      { projectRoot: outDir, force: true },
+    );
+    const pptx = await openPptx(out);
+    const chartName = Object.keys(pptx.files).find((name) =>
+      /^ppt\/charts\/chart\d+\.xml$/i.test(name),
+    );
+    assert.ok(chartName, "expected a chart part");
+    const xml = await readPptxEntry(pptx, chartName);
+    assert.match(xml, /c:legend|c:dLbls|c:showVal|c:showPercent|c:showCatName/);
+  });
+
+  it("parses SVG natural size so cover does not stretch", async () => {
+    const { writeFileSync, mkdirSync } = await import("node:fs");
+    const proj = join(outDir, "svg-fit");
+    mkdirSync(join(proj, "media"), { recursive: true });
+    writeFileSync(
+      join(proj, "media/wide.svg"),
+      `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100" viewBox="0 0 200 100"><rect width="200" height="100" fill="#0f0"/></svg>`,
+    );
+    await compileToPptx(
+      {
+        version: "openppt-1",
+        size: [200, 200],
+        pages: [
+          {
+            id: "p1",
+            elements: [
+              {
+                id: "img",
+                type: "image",
+                bounds: [0, 0, 200, 200],
+                src: "media/wide.svg",
+                fit: "cover",
+              },
+            ],
+          },
+        ],
+      },
+      join(outDir, "svg-cover.pptx"),
+      { projectRoot: proj, force: true },
+    );
+    const pptx = await openPptx(join(outDir, "svg-cover.pptx"));
+    const xml = await readPptxEntry(pptx, "ppt/slides/slide1.xml");
+    assert.match(xml, /a:srcRect/);
   });
 });
