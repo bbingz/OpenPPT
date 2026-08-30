@@ -4,6 +4,10 @@
 
 ### 2026-08-30
 
+- [新增] `dogfood:random` 种子化随机批次:全 IR 面随机成稿(构造性可行布局),产物卫生+rels 完整性断言,失败保留现场并打印种子复现命令;负向目录 10 类变异断言精确错误码且零写盘。本地 5 种子 × 120 = 600/600,负向 50/50。
+- [新增] `render:check` LibreOffice 无头渲染核对(转 PDF+页数比对),本地 27/27 通过;无 LibreOffice 时礼貌跳过,CI 用 --require。
+- [新增] nightly workflow:每晚日期种子 300 deck fuzz + 全批次渲染核对(同 SHA 钉扎,contents:read)。
+- [验证] 随机批次首轮暴露的两类失败均为生成器造出不可行布局被产品正确 LAYOUT_INVALID 拒绝(fail-closed 按设计工作),生成器已改为构造性可行。
 - [新增] `bun run dogfood` 真实生成陪跑批次(12 场景/115 断言):中文骨架成稿、五图表+类目标签、富单元格长表、富文本+链接关系完整性、嵌套布局、30 节大纲、多文件、五媒体格式、导入回环、Studio HTTP 全链路、YAML、64 页压力;产物级卫生断言(无 Infinity/NaN/rIdundefined、r:id 全解析、预览转义、耗时预算);已接入 CI 全矩阵。
 - [验证] 首轮 4 个失败均为陪跑脚本自身的 IR 用法错误(schema 与文档经受住真实作者路径检验);修正后 12/12,全套 180/180。
 - [新增] `serve` 子命令 → OpenPPT Studio 本地 Web 工作台(Bun.serve,零新依赖,仅绑 127.0.0.1):项目管理(空白/骨架/大纲/导入 PPTX)、deck.json 编辑+草稿暂存、校验、沙箱预览、QA、媒体上传、PPTX 下载。

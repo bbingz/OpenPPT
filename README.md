@@ -251,6 +251,19 @@ round-trip, Studio HTTP API, and a 64-page stress deck), then unzips and
 inspects the actual artifacts. Artifacts land in a temp directory printed at
 the end, with a `report.json` beside them.
 
+```bash
+bun run dogfood:random -- --count 120 --seed 20260830   # seeded random decks
+bun run render:check -- <dir-with-pptx>                 # needs LibreOffice
+```
+
+`dogfood:random` generates seeded random-but-valid decks across the whole IR
+surface plus a negative catalog asserting exact fail-closed error codes (and
+that nothing is written). `render:check` converts exported PPTX files to PDF
+with headless LibreOffice and matches page counts — proof the artifacts open
+in a real Office engine (skips politely when LibreOffice is absent). A nightly
+CI workflow fuzzes 300 decks with a date-derived seed and render-checks the
+full battery output.
+
 ## License
 
 Apache-2.0 — Copyright 2026 OpenPPT contributors. Third-party notices in `NOTICE`.

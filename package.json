@@ -46,7 +46,9 @@
     "install:skill": "bash scripts/install-skill.sh",
     "preview:golden": "bun bin/openppt.js preview fixtures/golden/deck.json -o fixtures/golden/out/preview.html --force",
     "serve": "bun bin/openppt.js serve",
-    "dogfood": "bun scripts/dogfood.js"
+    "dogfood": "bun scripts/dogfood.js",
+    "dogfood:random": "bun scripts/dogfood-random.js",
+    "render:check": "bun scripts/render-check.js"
   },
   "repository": {
     "type": "git",

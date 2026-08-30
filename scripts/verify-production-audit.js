@@ -111,6 +111,8 @@ const EXPECTED_ROOT_PACKAGE_SURFACE = {
       "bun bin/openppt.js preview fixtures/golden/deck.json -o fixtures/golden/out/preview.html --force",
     serve: "bun bin/openppt.js serve",
     dogfood: "bun scripts/dogfood.js",
+    "dogfood:random": "bun scripts/dogfood-random.js",
+    "render:check": "bun scripts/render-check.js",
   },
   main: null,
   module: null,

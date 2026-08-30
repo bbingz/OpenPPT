@@ -1,6 +1,22 @@
 # Changelog
 
-## Unreleased — 2026-08-30
+## Unreleased — 2026-08-30 (later)
+
+- New seeded random battery (`bun run dogfood:random`): generates
+  random-but-valid decks across the whole IR surface (rich text runs, shapes,
+  media, charts, tables, nested stack/row/grid/layer groups with feasible
+  sizing by construction), exports each one, and asserts artifact hygiene and
+  rels integrity; failures keep the deck folder and print a seeded repro
+  command. A negative catalog asserts ten fail-closed mutations reject with
+  exact error codes and write nothing. Locally verified with 5 seeds × 120
+  decks (600/600) plus 50/50 negative rejections.
+- New render check (`bun run render:check`): converts exported PPTX to PDF via
+  headless LibreOffice (isolated user profile), asserting conversion succeeds
+  and PDF page count matches slide count; skips politely without LibreOffice,
+  `--require` for CI. Locally verified 27/27 artifacts.
+- New `nightly` workflow: date-seeded 300-deck fuzz plus a LibreOffice render
+  check over the full battery output (same pinned action SHAs,
+  `contents: read`).
 
 - New `bun run dogfood` battery (`scripts/dogfood.js`): 12 real end-to-end
   generation scenarios (Chinese pitch from the skeleton, all five chart types

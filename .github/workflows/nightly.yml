@@ -1,0 +1,49 @@
+name: nightly
+
+on:
+  schedule:
+    # 18:30 UTC = 02:30 Asia/Shanghai
+    - cron: "30 18 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  random-battery:
+    name: random generation battery (date-seeded)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: "1.4.0"
+      - name: Install
+        run: bun install --frozen-lockfile
+      - name: Fuzz 300 random decks with today's seed
+        run: |
+          SEED=$(date -u +%Y%m%d)
+          echo "seed=$SEED"
+          bun scripts/dogfood-random.js --count 300 --seed "$SEED" --out "$RUNNER_TEMP/fuzz"
+
+  render-check:
+    name: LibreOffice render check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: "1.4.0"
+      - name: Install LibreOffice Impress
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libreoffice-impress
+      - name: Install
+        run: bun install --frozen-lockfile
+      - name: Generate artifacts (fixed battery + 40 random decks)
+        run: |
+          bun scripts/dogfood.js --out "$RUNNER_TEMP/artifacts/dogfood"
+          SEED=$(date -u +%Y%m%d)
+          bun scripts/dogfood-random.js --count 40 --seed "$SEED" --out "$RUNNER_TEMP/artifacts/fuzz"
+      - name: Render every artifact through LibreOffice
+        run: bun scripts/render-check.js --require "$RUNNER_TEMP/artifacts"
