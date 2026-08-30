@@ -118,14 +118,29 @@ export async function writeMinimalPptx(outputPath, spec = {}) {
   return buf;
 }
 
-export function slideXmlWithText(text, extraInner = "") {
+/** EMUs per CSS px at 96dpi — matches `src/import-pptx.js`. */
+export const EMU_PER_PX = 9525;
+
+export function pxToEmu(px) {
+  return px * EMU_PER_PX;
+}
+
+export function slideXmlWithBody(inner) {
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
   <p:cSld>
     <p:spTree>
       <p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>
       <p:grpSpPr/>
-      <p:sp>
+      ${inner}
+    </p:spTree>
+  </p:cSld>
+</p:sld>
+`;
+}
+
+export function slideXmlWithText(text, extraInner = "") {
+  return slideXmlWithBody(`<p:sp>
         <p:nvSpPr><p:cNvPr id="2" name="t"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr>
         <p:spPr>
           <a:xfrm>
@@ -138,11 +153,50 @@ export function slideXmlWithText(text, extraInner = "") {
           <a:p><a:r><a:t>${text}</a:t></a:r></a:p>
         </p:txBody>
       </p:sp>
-      ${extraInner}
-    </p:spTree>
-  </p:cSld>
-</p:sld>
-`;
+      ${extraInner}`);
+}
+
+export function spRectXml({
+  id = "2",
+  name = "s",
+  offX,
+  offY,
+  cx,
+  cy,
+  fill = "FF0000",
+  txBody = "",
+}) {
+  return `<p:sp>
+      <p:nvSpPr><p:cNvPr id="${id}" name="${name}"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>
+      <p:spPr><a:xfrm><a:off x="${offX}" y="${offY}"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm>
+        <a:solidFill><a:srgbClr val="${fill}"/></a:solidFill>
+      </p:spPr>
+      ${txBody}
+    </p:sp>`;
+}
+
+export function grpSpXml({
+  id = "8",
+  name = "g",
+  offX = 0,
+  offY = 0,
+  cx = 0,
+  cy = 0,
+  chOffX = 0,
+  chOffY = 0,
+  chCx = 0,
+  chCy = 0,
+  children = "",
+  xfrm = true,
+}) {
+  const xfrmXml = xfrm
+    ? `<a:xfrm><a:off x="${offX}" y="${offY}"/><a:ext cx="${cx}" cy="${cy}"/><a:chOff x="${chOffX}" y="${chOffY}"/><a:chExt cx="${chCx}" cy="${chCy}"/></a:xfrm>`
+    : "";
+  return `<p:grpSp>
+      <p:nvGrpSpPr><p:cNvPr id="${id}" name="${name}"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>
+      <p:grpSpPr>${xfrmXml}</p:grpSpPr>
+      ${children}
+    </p:grpSp>`;
 }
 
 /** 24-byte PNG signature + IHDR width/height fields (no valid image payload). */

@@ -32,6 +32,20 @@ describe("openppt CLI (shipped entry)", () => {
     assert.match(out, /group.*authoring-only.*loadDeck.*validateDeck/i);
   });
 
+  it("pdf subcommand requires -o and rejects stray options", () => {
+    const missing = spawnSync(bunBin, [cli, "pdf", "deck.json"], { encoding: "utf8" });
+    assert.equal(missing.status, 2);
+    assert.match(missing.stderr, /pdf requires -o/);
+
+    const stray = spawnSync(
+      bunBin,
+      [cli, "pdf", "deck.json", "-o", "out.pdf", "--skeleton"],
+      { encoding: "utf8" },
+    );
+    assert.equal(stray.status, 2);
+    assert.match(stray.stderr, /pdf does not accept --skeleton/);
+  });
+
   it(
     "runs directly through the shipped Bun shebang",
     { skip: process.platform === "win32" },

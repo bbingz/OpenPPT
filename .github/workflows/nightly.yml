@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: read
+  issues: write
 
 jobs:
   random-battery:
@@ -25,6 +26,15 @@ jobs:
           SEED=$(date -u +%Y%m%d)
           echo "seed=$SEED"
           bun scripts/dogfood-random.js --count 300 --seed "$SEED" --out "$RUNNER_TEMP/fuzz"
+      - name: File failure issue
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          SEED=$(date -u +%Y%m%d)
+          gh issue create --repo "$GITHUB_REPOSITORY" \
+            --title "nightly random battery failed ($(date -u +%F), seed $SEED)" \
+            --body "$(printf 'Run: %s/%s/actions/runs/%s\n\nReproduce locally:\n\n    bun scripts/dogfood-random.js --count 300 --seed %s\n' "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID" "$SEED")"
 
   render-check:
     name: LibreOffice render check
@@ -47,3 +57,11 @@ jobs:
           bun scripts/dogfood-random.js --count 40 --seed "$SEED" --out "$RUNNER_TEMP/artifacts/fuzz"
       - name: Render every artifact through LibreOffice
         run: bun scripts/render-check.js --require "$RUNNER_TEMP/artifacts"
+      - name: File failure issue
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue create --repo "$GITHUB_REPOSITORY" \
+            --title "nightly LibreOffice render check failed ($(date -u +%F))" \
+            --body "$(printf 'Run: %s/%s/actions/runs/%s\n\nReproduce locally (needs LibreOffice):\n\n    bun scripts/dogfood.js --out /tmp/art && bun scripts/render-check.js --require /tmp/art\n' "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID")"

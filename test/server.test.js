@@ -249,6 +249,33 @@ describe("web server", () => {
     expect(miss.status).toBe(404);
   });
 
+  test("pdf export endpoint matches advertised LibreOffice availability", async () => {
+    const meta = await apiJson("/api/meta");
+    expect(typeof meta.body.pdfAvailable).toBe("boolean");
+
+    const created = await apiJson("/api/projects", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mode: "blank", title: "PDF Probe", theme: "default" }),
+    });
+    const pid = created.body.project.id;
+    try {
+      const res = await api(`/api/projects/${pid}/export.pdf`);
+      if (meta.body.pdfAvailable) {
+        expect(res.status).toBe(200);
+        expect(res.headers.get("content-type")).toBe("application/pdf");
+        const bytes = Buffer.from(await res.arrayBuffer());
+        expect(bytes.subarray(0, 4).toString("latin1")).toBe("%PDF");
+      } else {
+        expect(res.status).toBe(501);
+        const body = await res.json();
+        expect(body.error.code).toBe("PDF_UNAVAILABLE");
+      }
+    } finally {
+      await api(`/api/projects/${pid}`, { method: "DELETE" });
+    }
+  }, 30000);
+
   test("import endpoint turns an uploaded PPTX into a project", async () => {
     const work = mkdtempSync(join(tmpdir(), "openppt-server-import-"));
     try {

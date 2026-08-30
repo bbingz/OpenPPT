@@ -1,6 +1,27 @@
 # Changelog
 
-## Unreleased — 2026-08-30 (later)
+## Unreleased — 2026-08-30 (round six)
+
+- Optional PDF export via headless LibreOffice: new `pdf` CLI command,
+  `exportDeckPdf` / `convertPptxToPdf` / `findSoffice` public API
+  (`src/render-pdf.js`), and a Studio "导出 PDF" button plus
+  `GET /api/projects/:id/export.pdf` (501 with `PDF_UNAVAILABLE` when
+  LibreOffice is absent; `meta.pdfAvailable` feature flag). PPTX export still
+  needs no external tools; conversions run in isolated LibreOffice profiles
+  with typed fail-closed errors.
+- PPTX import now expands `p:grpSp` groups per OOXML semantics — child
+  coordinates composed through `off`/`ext` over `chOff`/`chExt` scaling in EMU
+  space, nested groups up to depth 8, with fail-safe skip + warning for
+  malformed or over-deep groups — instead of skipping all grouped shapes.
+- PPTX import preserves run-level styling (`b`/`sz`/`srgbClr`) as rich-text
+  runs per paragraph, keeping fifth-round newline semantics, degrading to a
+  plain string when all runs share one style, and truncating at the
+  1024-runs-per-element ceiling with a warning.
+- Nightly workflow files a GitHub issue on failure (seeded repro command in
+  the body; `issues: write`).
+- Tests: 188 total — group-scale/nesting/malformed-group fixtures, rich-run
+  extraction and degradation, CLI `pdf` argument matrix, and a Studio PDF
+  endpoint test that follows advertised availability on each platform.
 
 - New seeded random battery (`bun run dogfood:random`): generates
   random-but-valid decks across the whole IR surface (rich text runs, shapes,

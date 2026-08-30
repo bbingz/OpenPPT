@@ -2,6 +2,14 @@
 
 ## Changelog Memo
 
+### 2026-08-30(第六轮)
+
+- [新增] 可选 PDF 导出:CLI `pdf` 命令、`exportDeckPdf` 公共 API、Studio「导出 PDF」按钮与 `/export.pdf` 端点(无 LibreOffice 时 501+`PDF_UNAVAILABLE`,`meta.pdfAvailable` 探测);隔离 profile、类型化错误,PPTX 导出依旧零外部依赖。
+- [修复] 导入按 OOXML off/ext/chOff/chExt 缩放语义递归展开 `p:grpSp`(嵌套上限 8,畸形回退跳过+警告),取代整组跳过;run 级 b/sz/srgbClr 保留为富文本 runs,同质降级 string,1024 上限截断+警告。
+- [新增] nightly 失败自动开 GitHub issue(附种子复现命令)。
+- [验证] 全套 188/188;dogfood 12/12;随机种子 606060 120/120+负向 10/10;LibreOffice 渲染核对 8/8(含经新导入路径的 re-export)。
+- [风险/DEFERRED] 组内 flipH/flipV/rot、schemeClr 主题色、run italic/fontFamily 未做;组变换后越界元素会整包校验失败(未 clamp);组内文档序 leaf 先于组。→ 第七轮工单。
+
 ### 2026-08-30
 
 - [新增] `dogfood:random` 种子化随机批次:全 IR 面随机成稿(构造性可行布局),产物卫生+rels 完整性断言,失败保留现场并打印种子复现命令;负向目录 10 类变异断言精确错误码且零写盘。本地 5 种子 × 120 = 600/600,负向 50/50。

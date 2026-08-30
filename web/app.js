@@ -250,21 +250,22 @@ function openCreateDialog(initialMode) {
 
 /* ---------------- export download ---------------- */
 
-async function downloadExport(id) {
+async function downloadExport(id, format = "pptx") {
   try {
-    const res = await fetch(`/api/projects/${id}/export`);
+    const path = format === "pdf" ? `/api/projects/${id}/export.pdf` : `/api/projects/${id}/export`;
+    const res = await fetch(path);
     if (!res.ok) {
       const body = await res.json().catch(() => null);
       throw new Error(body?.error ? `[${body.error.code}] ${body.error.message}` : `HTTP ${res.status}`);
     }
     const blob = await res.blob();
     const url = URL.createObjectURL(blob);
-    const anchor = el("a", { href: url, download: `${id}.pptx` });
+    const anchor = el("a", { href: url, download: `${id}.${format}` });
     document.body.append(anchor);
     anchor.click();
     anchor.remove();
     URL.revokeObjectURL(url);
-    toast("PPTX 已导出下载");
+    toast(`${format.toUpperCase()} 已导出下载`);
   } catch (err) {
     toast(`导出失败:${err.message}`, "err", 7000);
   }
@@ -298,6 +299,9 @@ async function renderWorkbench(id) {
   const saveBtn = el("button", { class: "btn primary" }, ["保存", el("kbd", { text: "⌘S" })]);
   const validateBtn = el("button", { class: "btn", text: "校验" });
   const exportBtn = el("button", { class: "btn", text: "导出 PPTX" });
+  const pdfBtn = meta.pdfAvailable
+    ? el("button", { class: "btn", text: "导出 PDF", title: "经 LibreOffice 无头渲染" })
+    : null;
 
   const topbar = el("div", { class: "topbar" }, [
     el("button", { class: "btn ghost", text: "← 项目", onclick: () => { location.hash = "#/"; } }),
@@ -308,6 +312,7 @@ async function renderWorkbench(id) {
     validateBtn,
     saveBtn,
     exportBtn,
+    pdfBtn,
   ]);
 
   /* --- editor pane --- */
@@ -580,13 +585,15 @@ async function renderWorkbench(id) {
 
   saveBtn.addEventListener("click", doSave);
   validateBtn.addEventListener("click", () => doValidate());
-  exportBtn.addEventListener("click", async () => {
+  const exportFlow = (format) => async () => {
     if (editor.value !== saved) {
       const ok = await doSave();
       if (!ok) return;
     }
-    downloadExport(id);
-  });
+    downloadExport(id, format);
+  };
+  exportBtn.addEventListener("click", exportFlow("pptx"));
+  if (pdfBtn) pdfBtn.addEventListener("click", exportFlow("pdf"));
 
   const keyHandler = (event) => {
     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") {

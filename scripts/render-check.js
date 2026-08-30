@@ -14,7 +14,7 @@
  * is not installed (local convenience); CI passes --require.
  */
 
-import { execFileSync, spawnSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import {
   existsSync,
   mkdtempSync,
@@ -28,17 +28,7 @@ import { tmpdir } from "node:os";
 import { pathToFileURL } from "node:url";
 import JSZip from "jszip";
 
-function findSoffice() {
-  if (process.env.SOFFICE && existsSync(process.env.SOFFICE)) return process.env.SOFFICE;
-  const candidates = ["soffice", "libreoffice"];
-  for (const name of candidates) {
-    const probe = spawnSync(name, ["--version"], { encoding: "utf8", timeout: 20000 });
-    if (probe.status === 0) return name;
-  }
-  const macPath = "/Applications/LibreOffice.app/Contents/MacOS/soffice";
-  if (existsSync(macPath)) return macPath;
-  return null;
-}
+import { findSoffice } from "../src/render-pdf.js";
 
 function collectPptx(paths, limit) {
   const found = [];

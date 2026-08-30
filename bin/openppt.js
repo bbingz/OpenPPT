@@ -21,6 +21,7 @@ const COMMANDS = new Set([
   "init",
   "from-outline",
   "serve",
+  "pdf",
 ]);
 
 function printHelp() {
@@ -36,6 +37,7 @@ Usage:
   bun bin/openppt.js qa           <deck.json|yaml> [--fail-on low|med|high|critical]
   bun bin/openppt.js preview      <deck.json|yaml> -o <out.html> [--force]
   bun bin/openppt.js serve        [--port 7357] [--data-dir <dir>] [--open]
+  bun bin/openppt.js pdf          <deck.json|yaml> -o <out.pdf> [--force]
   bun bin/openppt.js -h | --help
   bun bin/openppt.js -V | --version
 
@@ -50,6 +52,8 @@ Notes:
   - qa --fail-on default: high
   - serve: local web workbench (OpenPPT Studio) on 127.0.0.1; projects live in
     --data-dir (default ~/.openppt/projects), each one a CLI-compatible folder
+  - pdf: renders via headless LibreOffice when installed (or set SOFFICE);
+    PPTX export itself never needs LibreOffice
   - Runtime: Bun
 `);
 }
@@ -203,6 +207,7 @@ function assertCommandOptions(opts) {
     qa: new Set(["failOn"]),
     preview: new Set(["output", "force"]),
     serve: new Set(["port", "dataDir", "open"]),
+    pdf: new Set(["output", "force"]),
   };
   const labels = {
     output: "-o/--output",
@@ -315,6 +320,20 @@ async function main() {
       });
       console.log(`Wrote ${result.deckPath}`);
       console.log(`pages=${result.pageCount} title=${result.title}`);
+      return;
+    }
+
+    if (opts.command === "pdf") {
+      if (!opts.output) {
+        console.error("pdf requires -o <out.pdf>");
+        process.exit(2);
+      }
+      const { exportDeckPdf } = await import("../src/render-pdf.js");
+      const result = await exportDeckPdf(opts.input, opts.output, {
+        force: opts.force,
+      });
+      console.log(`Wrote ${result.outputPath}`);
+      console.log(`pages=${result.pageCount}`);
       return;
     }
 

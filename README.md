@@ -54,6 +54,9 @@ bun bin/openppt.js qa fixtures/golden/deck.json --fail-on med
 # offline HTML preview (--force optional on first write, required to replace)
 bun bin/openppt.js preview fixtures/golden/deck.json -o out/preview.html --force
 
+# optional PDF (uses headless LibreOffice when installed; PPTX never needs it)
+bun bin/openppt.js pdf fixtures/golden/deck.json -o out/deck.pdf --force
+
 # pitch skeleton (cover + TOC + body + final)
 bun bin/openppt.js export templates/pitch-skeleton/deck.json -o out/pitch.pptx --force
 ```
@@ -74,7 +77,8 @@ bun bin/openppt.js serve --port 8080 --data-dir ~/decks
 Studio lets you create projects (blank / pitch skeleton / from a markdown
 outline / lossy PPTX import), edit `deck.json` with live schema validation,
 inspect the structural preview and QA report, upload `media/` images
-(extension + magic-byte checked), and download the exported `.pptx`.
+(extension + magic-byte checked), and download the exported `.pptx` — plus a
+one-click PDF when LibreOffice is installed (the button appears automatically).
 
 Every Studio project is a plain folder under `--data-dir`
 (default `~/.openppt/projects`): `deck.json` + `media/` — fully interchangeable

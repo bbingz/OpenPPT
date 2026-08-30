@@ -26,6 +26,7 @@ import { OpenPptError, ErrorCodes } from "./errors.js";
 import { loadDeck } from "./load.js";
 import { validateDeck, sniffImageBytes } from "./validate.js";
 import { compileToBuffer } from "./compile.js";
+import { findSoffice, convertPptxToPdf } from "./render-pdf.js";
 import { renderPreviewHtml } from "./preview.js";
 import { qaDeck } from "./qa.js";
 import { initProject } from "./init.js";
@@ -300,6 +301,7 @@ export function startWebServer(options = {}) {
   const dataDir = resolve(options.dataDir || join(homedir(), ".openppt", "projects"));
   mkdirSync(dataDir, { recursive: true });
   const webDir = join(rootDir, "web");
+  const sofficePath = findSoffice();
 
   async function handleApi(req, url) {
     const parts = url.pathname.split("/").filter(Boolean); // ["api", ...]
@@ -314,6 +316,7 @@ export function startWebServer(options = {}) {
         version: pkg.version,
         themes: THEMES,
         dataDir,
+        pdfAvailable: Boolean(sofficePath),
         limits: {
           mediaBytesPerFile: RESOURCE_LIMITS.mediaBytesPerFile,
           mediaBytesPerDeck: RESOURCE_LIMITS.mediaBytesPerDeck,
@@ -525,6 +528,38 @@ export function startWebServer(options = {}) {
             "X-Content-Type-Options": "nosniff",
           },
         });
+      }
+
+      // GET /api/projects/:id/export.pdf — optional LibreOffice rendering
+      if (parts.length === 4 && sub === "export.pdf" && method === "GET") {
+        if (!sofficePath) {
+          throw new HttpError(
+            501,
+            "PDF_UNAVAILABLE",
+            "LibreOffice (soffice) not found on this machine — install it or set SOFFICE to enable PDF export",
+          );
+        }
+        const { deck, projectRoot } = loadProjectDeck(dataDir, id);
+        const buffer = await compileToBuffer(deck, { projectRoot });
+        const work = mkdtempSync(join(tmpdir(), "openppt-studio-pdf-"));
+        try {
+          const pptxPath = join(work, "deck.pptx");
+          writeFileSync(pptxPath, buffer);
+          const pdfPath = convertPptxToPdf(pptxPath, join(work, "deck.pdf"), {
+            force: true,
+            soffice: sofficePath,
+          });
+          return new Response(readFileSync(pdfPath), {
+            headers: {
+              "Content-Type": "application/pdf",
+              "Content-Disposition": `attachment; filename="${id}.pdf"`,
+              "Cache-Control": "no-store",
+              "X-Content-Type-Options": "nosniff",
+            },
+          });
+        } finally {
+          rmSync(work, { recursive: true, force: true });
+        }
       }
 
       // /api/projects/:id/media[/:name]

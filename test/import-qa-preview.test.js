@@ -19,7 +19,15 @@ import { qaDeck, analyzeLayout } from "../src/qa.js";
 import { writePreviewHtml, renderPreviewHtml } from "../src/preview.js";
 import { validateDeck } from "../src/validate.js";
 import { OpenPptError } from "../src/errors.js";
-import { slideXmlWithText, writeMinimalPptx } from "./helpers/pptx.js";
+import { RESOURCE_LIMITS } from "../src/resource-limits.js";
+import {
+  grpSpXml,
+  pxToEmu,
+  slideXmlWithBody,
+  slideXmlWithText,
+  spRectXml,
+  writeMinimalPptx,
+} from "./helpers/pptx.js";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -442,29 +450,247 @@ describe("import / qa / preview", () => {
     }
   });
 
-  it("skips grpSp children and records a warning", async () => {
+  it("expands grpSp children with OOXML group-space scale", async () => {
+    const work = mkdtempSync(join(tmpdir(), "openppt-import-grp-scale-"));
+    try {
+      const pptxPath = join(work, "grp.pptx");
+      // Group 20×20px on slide, child space 10×10px → scale 2.
+      // Child at (1,1) 4×2 in child space → slide (12,12) 8×4.
+      const xml = slideXmlWithBody(
+        grpSpXml({
+          offX: pxToEmu(10),
+          offY: pxToEmu(10),
+          cx: pxToEmu(20),
+          cy: pxToEmu(20),
+          chCx: pxToEmu(10),
+          chCy: pxToEmu(10),
+          children: spRectXml({
+            id: "9",
+            name: "inner",
+            offX: pxToEmu(1),
+            offY: pxToEmu(1),
+            cx: pxToEmu(4),
+            cy: pxToEmu(2),
+          }),
+        }),
+      );
+      await writeMinimalPptx(pptxPath, { slides: [{ xml }] });
+      const imp = await importPptx(pptxPath, join(work, "out"), { force: true });
+      const loaded = loadDeck(imp.deckPath);
+      const shapes = loaded.deck.pages[0].elements.filter((el) => el.type === "shape");
+      assert.equal(shapes.length, 1);
+      assert.deepEqual(shapes[0].bounds, [12, 12, 8, 4]);
+      assert.equal(
+        imp.warnings.some((w) => /skipped \d+ grouped|child offsets are relative/i.test(w)),
+        false,
+      );
+    } finally {
+      rmSync(work, { recursive: true, force: true });
+    }
+  });
+
+  it("expands nested grpSp with composed transforms", async () => {
+    const work = mkdtempSync(join(tmpdir(), "openppt-import-grp-nest-"));
+    try {
+      const pptxPath = join(work, "nested.pptx");
+      // Outer scale 2, inner additional scale 2 → child (1,1) 1×1 maps to (14,14) 4×4.
+      const xml = slideXmlWithBody(
+        grpSpXml({
+          id: "8",
+          offX: pxToEmu(10),
+          offY: pxToEmu(10),
+          cx: pxToEmu(20),
+          cy: pxToEmu(20),
+          chCx: pxToEmu(10),
+          chCy: pxToEmu(10),
+          children: grpSpXml({
+            id: "9",
+            name: "inner-g",
+            offX: 0,
+            offY: 0,
+            cx: pxToEmu(10),
+            cy: pxToEmu(10),
+            chCx: pxToEmu(5),
+            chCy: pxToEmu(5),
+            children: spRectXml({
+              id: "10",
+              name: "leaf",
+              offX: pxToEmu(1),
+              offY: pxToEmu(1),
+              cx: pxToEmu(1),
+              cy: pxToEmu(1),
+            }),
+          }),
+        }),
+      );
+      await writeMinimalPptx(pptxPath, { slides: [{ xml }] });
+      const imp = await importPptx(pptxPath, join(work, "out"), { force: true });
+      const loaded = loadDeck(imp.deckPath);
+      const shapes = loaded.deck.pages[0].elements.filter((el) => el.type === "shape");
+      assert.equal(shapes.length, 1);
+      assert.deepEqual(shapes[0].bounds, [14, 14, 4, 4]);
+    } finally {
+      rmSync(work, { recursive: true, force: true });
+    }
+  });
+
+  it("skips malformed grpSp without xfrm and records a warning", async () => {
     const work = mkdtempSync(join(tmpdir(), "openppt-import-grp-"));
     try {
       const pptxPath = join(work, "grp.pptx");
-      const extra = `
-      <p:grpSp>
-        <p:nvGrpSpPr><p:cNvPr id="8" name="g"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>
-        <p:grpSpPr><a:xfrm><a:off x="1000000" y="1000000"/><a:ext cx="1000000" cy="1000000"/><a:chOff x="0" y="0"/><a:chExt cx="1000000" cy="1000000"/></a:xfrm></p:grpSpPr>
-        <p:sp>
-          <p:nvSpPr><p:cNvPr id="9" name="inner"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>
-          <p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="100000" cy="100000"/></a:xfrm>
-            <a:solidFill><a:srgbClr val="FF0000"/></a:solidFill>
-          </p:spPr>
-        </p:sp>
-      </p:grpSp>`;
-      await writeMinimalPptx(pptxPath, {
-        slides: [{ xml: slideXmlWithText("OUTSIDE", extra) }],
-      });
+      const xml = slideXmlWithBody(
+        `${grpSpXml({
+          xfrm: false,
+          children: spRectXml({
+            id: "9",
+            name: "inner",
+            offX: 0,
+            offY: 0,
+            cx: pxToEmu(10),
+            cy: pxToEmu(10),
+          }),
+        })}${grpSpXml({
+          id: "11",
+          name: "zero",
+          offX: pxToEmu(20),
+          offY: pxToEmu(20),
+          cx: pxToEmu(10),
+          cy: pxToEmu(10),
+          chCx: 0,
+          chCy: 0,
+          children: spRectXml({
+            id: "12",
+            name: "zero-child",
+            offX: 0,
+            offY: 0,
+            cx: pxToEmu(10),
+            cy: pxToEmu(10),
+            fill: "00FF00",
+          }),
+        })}`,
+      );
+      await writeMinimalPptx(pptxPath, { slides: [{ xml }] });
       const imp = await importPptx(pptxPath, join(work, "out"), { force: true });
       const loaded = loadDeck(imp.deckPath);
       const shapes = loaded.deck.pages[0].elements.filter((el) => el.type === "shape");
       assert.equal(shapes.length, 0);
       assert.ok(imp.warnings.some((w) => /grpSp|grouped/i.test(w)));
+    } finally {
+      rmSync(work, { recursive: true, force: true });
+    }
+  });
+
+  it("imports mixed run styles as IR rich text", async () => {
+    const work = mkdtempSync(join(tmpdir(), "openppt-import-runs-"));
+    try {
+      const pptxPath = join(work, "runs.pptx");
+      const xml = slideXmlWithBody(`<p:sp>
+        <p:nvSpPr><p:cNvPr id="2" name="t"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr>
+        <p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="1828800" cy="914400"/></a:xfrm></p:spPr>
+        <p:txBody>
+          <a:bodyPr/>
+          <a:p>
+            <a:r><a:rPr b="1" sz="1800"><a:solidFill><a:srgbClr val="111827"/></a:solidFill></a:rPr><a:t>Bold</a:t></a:r>
+            <a:r><a:rPr sz="1800"><a:solidFill><a:srgbClr val="DC2626"/></a:solidFill></a:rPr><a:t>Red</a:t></a:r>
+            <a:r><a:rPr sz="2800"><a:solidFill><a:srgbClr val="111827"/></a:solidFill></a:rPr><a:t>Big</a:t></a:r>
+          </a:p>
+        </p:txBody>
+      </p:sp>`);
+      await writeMinimalPptx(pptxPath, { slides: [{ xml }] });
+      const imp = await importPptx(pptxPath, join(work, "out"), { force: true });
+      const loaded = loadDeck(imp.deckPath);
+      validateDeck(loaded.deck, { projectRoot: loaded.projectRoot, checkMedia: true });
+      const el = loaded.deck.pages[0].elements[0];
+      assert.equal(el.type, "text");
+      assert.equal(Array.isArray(el.text), true);
+      assert.equal(el.text.length, 3);
+      assert.equal(el.text[0].text, "Bold");
+      assert.equal(el.text[0].bold, true);
+      assert.equal(el.text[1].text, "Red");
+      assert.equal(el.text[1].color, "#DC2626");
+      assert.equal(el.text[2].text, "Big");
+      assert.equal(el.text[2].fontSize, 28);
+    } finally {
+      rmSync(work, { recursive: true, force: true });
+    }
+  });
+
+  it("collapses homogeneous runs to a plain string", async () => {
+    const work = mkdtempSync(join(tmpdir(), "openppt-import-runs-same-"));
+    try {
+      const pptxPath = join(work, "same.pptx");
+      const xml = slideXmlWithBody(`<p:sp>
+        <p:nvSpPr><p:cNvPr id="2" name="t"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr>
+        <p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="1828800" cy="457200"/></a:xfrm></p:spPr>
+        <p:txBody>
+          <a:bodyPr/>
+          <a:p>
+            <a:r><a:rPr b="1" sz="2000"><a:solidFill><a:srgbClr val="2563EB"/></a:solidFill></a:rPr><a:t>Same</a:t></a:r>
+            <a:r><a:rPr b="1" sz="2000"><a:solidFill><a:srgbClr val="2563EB"/></a:solidFill></a:rPr><a:t>Style</a:t></a:r>
+          </a:p>
+        </p:txBody>
+      </p:sp>`);
+      await writeMinimalPptx(pptxPath, { slides: [{ xml }] });
+      const imp = await importPptx(pptxPath, join(work, "out"), { force: true });
+      const loaded = loadDeck(imp.deckPath);
+      const el = loaded.deck.pages[0].elements[0];
+      assert.equal(typeof el.text, "string");
+      assert.equal(el.text, "SameStyle");
+      assert.equal(el.fontSize, 20);
+      assert.equal(el.bold, true);
+      assert.equal(el.color, "#2563EB");
+    } finally {
+      rmSync(work, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps paragraph breaks across mixed-style runs", async () => {
+    const work = mkdtempSync(join(tmpdir(), "openppt-import-runs-br-"));
+    try {
+      const pptxPath = join(work, "br.pptx");
+      const xml = slideXmlWithBody(`<p:sp>
+        <p:nvSpPr><p:cNvPr id="2" name="t"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr>
+        <p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="1828800" cy="914400"/></a:xfrm></p:spPr>
+        <p:txBody>
+          <a:bodyPr/>
+          <a:p><a:r><a:rPr b="1" sz="1800"/><a:t>A</a:t></a:r><a:br/><a:r><a:rPr sz="1800"/><a:t>B</a:t></a:r></a:p>
+          <a:p><a:r><a:rPr sz="2400"/><a:t>C</a:t></a:r></a:p>
+        </p:txBody>
+      </p:sp>`);
+      await writeMinimalPptx(pptxPath, { slides: [{ xml }] });
+      const imp = await importPptx(pptxPath, join(work, "out"), { force: true });
+      const loaded = loadDeck(imp.deckPath);
+      const el = loaded.deck.pages[0].elements[0];
+      assert.equal(Array.isArray(el.text), true);
+      assert.equal(el.text.map((run) => run.text).join(""), "A\nB\nC");
+    } finally {
+      rmSync(work, { recursive: true, force: true });
+    }
+  });
+
+  it("merges extra rich-text runs at the per-element ceiling", async () => {
+    const work = mkdtempSync(join(tmpdir(), "openppt-import-runs-cap-"));
+    try {
+      const pptxPath = join(work, "cap.pptx");
+      const limit = RESOURCE_LIMITS.richTextRunsPerElement;
+      const runXml = Array.from({ length: limit + 1 }, (_, i) =>
+        `<a:r><a:rPr ${i % 2 === 0 ? 'b="1"' : 'sz="1800"'}/><a:t>r${i}</a:t></a:r>`,
+      ).join("");
+      const xml = slideXmlWithBody(`<p:sp>
+        <p:nvSpPr><p:cNvPr id="2" name="t"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr>
+        <p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="1828800" cy="457200"/></a:xfrm></p:spPr>
+        <p:txBody><a:bodyPr/><a:p>${runXml}</a:p></p:txBody>
+      </p:sp>`);
+      await writeMinimalPptx(pptxPath, { slides: [{ xml }] });
+      const imp = await importPptx(pptxPath, join(work, "out"), { force: true });
+      const loaded = loadDeck(imp.deckPath);
+      validateDeck(loaded.deck, { projectRoot: loaded.projectRoot, checkMedia: true });
+      const el = loaded.deck.pages[0].elements[0];
+      assert.equal(Array.isArray(el.text), true);
+      assert.equal(el.text.length, limit);
+      assert.ok(el.text[limit - 1].text.includes(`r${limit - 1}`));
+      assert.ok(el.text[limit - 1].text.includes(`r${limit}`));
+      assert.ok(imp.warnings.some((w) => /richTextRunsPerElement|rich-text run/i.test(w)));
     } finally {
       rmSync(work, { recursive: true, force: true });
     }
