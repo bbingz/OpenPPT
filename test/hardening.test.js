@@ -668,14 +668,15 @@ describe("v1 contract hardening", () => {
         projectRoot: source.projectRoot,
       });
       const zip = await JSZip.loadAsync(bytes);
+      // Off-canvas coordinates are clamped by design since round seven, and
+      // invalid media has its own regression below — here an IR-level
+      // resource-ceiling breach (single string above stringBytes) must still
+      // fail closed before any project file is committed.
       const slidePath = "ppt/slides/slide1.xml";
       const xml = await zip.file(slidePath).async("string");
-      const invalidXml = xml.replace(
-        /(<p:sp\b[\s\S]*?<a:off )x="\d+"/,
-        '$1x="-9525"',
-      );
-      assert.notEqual(invalidXml, xml);
-      zip.file(slidePath, invalidXml);
+      const oversized = xml.replace(/<a:t>[^<]+<\/a:t>/, `<a:t>${"x".repeat(70000)}</a:t>`);
+      assert.notEqual(oversized, xml);
+      zip.file(slidePath, oversized);
       const pptx = join(work, "invalid.pptx");
       writeFileSync(
         pptx,
@@ -685,7 +686,7 @@ describe("v1 contract hardening", () => {
       const dest = join(work, "imported");
       await assert.rejects(
         () => importPptx(pptx, dest),
-        (err) => err instanceof OpenPptError && err.code === ErrorCodes.BOUNDS,
+        (err) => err instanceof OpenPptError && err.code === ErrorCodes.RESOURCE_LIMIT,
       );
       assert.equal(existsSync(join(dest, "deck.json")), false);
       assert.equal(existsSync(join(dest, "media")), false);

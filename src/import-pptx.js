@@ -98,6 +98,32 @@ const IDENTITY_GROUP_XFRM = Object.freeze({
   chExtCx: 1,
   chExtCy: 1,
 });
+const SCHEME_COLOR_NAMES = [
+  "dk1",
+  "lt1",
+  "dk2",
+  "lt2",
+  "accent1",
+  "accent2",
+  "accent3",
+  "accent4",
+  "accent5",
+  "accent6",
+  "hlink",
+  "folHlink",
+];
+const SCHEME_COLOR_ALIASES = {
+  tx1: "dk1",
+  bg1: "lt1",
+  tx2: "dk2",
+  bg2: "lt2",
+};
+const SHAPE_CHILD_SPECS = [
+  { kind: "grpSp", open: "<p:grpSp", close: "</p:grpSp>" },
+  { kind: "sp", open: "<p:sp", close: "</p:sp>" },
+  { kind: "pic", open: "<p:pic", close: "</p:pic>" },
+  { kind: "graphicFrame", open: "<p:graphicFrame", close: "</p:graphicFrame>" },
+];
 
 function indexOfOpenTag(xml, open, from = 0) {
   let start = from;
@@ -138,45 +164,6 @@ function extractBalancedBlock(xml, start, open, close) {
   return { block: xml.slice(start, i), end: i };
 }
 
-/**
- * Top-level balanced blocks. Stops at the first unclosed open tag.
- * @param {string} xml
- * @param {string} open
- * @param {string} close
- * @returns {{ blocks: { start: number, end: number, xml: string }[], truncatedAt: number }}
- */
-function sliceBalancedBlocks(xml, open, close) {
-  const blocks = [];
-  let from = 0;
-  let truncatedAt = -1;
-  while (from < xml.length) {
-    const start = indexOfOpenTag(xml, open, from);
-    if (start < 0) break;
-    const extracted = extractBalancedBlock(xml, start, open, close);
-    if (!extracted) {
-      truncatedAt = start;
-      break;
-    }
-    blocks.push({ start, end: extracted.end, xml: extracted.block });
-    from = extracted.end;
-  }
-  return { blocks, truncatedAt };
-}
-
-function stripBalancedBlocks(xml, blocks) {
-  let out = xml;
-  for (let i = blocks.length - 1; i >= 0; i -= 1) {
-    out = out.slice(0, blocks[i].start) + out.slice(blocks[i].end);
-  }
-  return out;
-}
-
-/**
- * @param {string} xml
- * @param {string} open including '<'
- * @param {string} close including '</...>'
- * @returns {string[]}
- */
 function unescapeXmlText(t) {
   return t
     .replace(/&lt;/g, "<")
@@ -282,7 +269,8 @@ function parseRelationships(relXml) {
     const tag = relXml.slice(start, end + 1);
     const id = attrAny(tag, "Id");
     const target = attrAny(tag, "Target");
-    if (id && target) out.push({ id, target });
+    const type = attrAny(tag, "Type");
+    if (id && target) out.push({ id, target, type });
     from = end + 1;
   }
   return out;
@@ -312,16 +300,6 @@ function resolveAlternateContent(xml) {
   return out;
 }
 
-function takeGroupShapes(xml) {
-  const { blocks, truncatedAt } = sliceBalancedBlocks(xml, "<p:grpSp", "</p:grpSp>");
-  const prefix = truncatedAt >= 0 ? xml.slice(0, truncatedAt) : xml;
-  return {
-    xml: stripBalancedBlocks(prefix, blocks),
-    groups: blocks,
-    truncated: truncatedAt >= 0,
-  };
-}
-
 function parseOffExt(xml) {
   const off = xml.match(/<a:off x="(-?\d+)" y="(-?\d+)"/);
   const ext = xml.match(/<a:ext cx="(-?\d+)" cy="(-?\d+)"/);
@@ -332,6 +310,25 @@ function parseOffExt(xml) {
     cx: Number(ext[1]),
     cy: Number(ext[2]),
   };
+}
+
+function xfrmOpenTag(xfrmXml) {
+  const gt = xfrmXml.indexOf(">");
+  return gt >= 0 ? xfrmXml.slice(0, gt + 1) : xfrmXml;
+}
+
+function xfrmHasRotOrFlip(xfrmXml) {
+  const openTag = xfrmOpenTag(xfrmXml);
+  const rot = attrAny(openTag, "rot");
+  if (rot != null && Number(rot) !== 0 && Number.isFinite(Number(rot))) return true;
+  const flipH = attrAny(openTag, "flipH");
+  const flipV = attrAny(openTag, "flipV");
+  return (
+    flipH === "1" ||
+    flipH === "true" ||
+    flipV === "1" ||
+    flipV === "true"
+  );
 }
 
 function parseGroupXfrm(grpXml) {
@@ -355,7 +352,79 @@ function parseGroupXfrm(grpXml) {
     chOffY: Number(chOff[2]),
     chExtCx,
     chExtCy,
+    rotOrFlip: xfrmHasRotOrFlip(xfrm),
   };
+}
+
+function hexFromColorChoice(block) {
+  const srgbStart = indexOfOpenTag(block, "<a:srgbClr", 0);
+  if (srgbStart >= 0) {
+    const end = block.indexOf(">", srgbStart);
+    const tag = end >= 0 ? block.slice(srgbStart, end + 1) : "";
+    const val = attrAny(tag, "val");
+    if (val && /^[0-9A-Fa-f]{6}$/.test(val)) return `#${val}`;
+  }
+  const sysStart = indexOfOpenTag(block, "<a:sysClr", 0);
+  if (sysStart >= 0) {
+    const end = block.indexOf(">", sysStart);
+    const tag = end >= 0 ? block.slice(sysStart, end + 1) : "";
+    const last = attrAny(tag, "lastClr");
+    if (last && /^[0-9A-Fa-f]{6}$/.test(last)) return `#${last}`;
+  }
+  return null;
+}
+
+function parseClrScheme(themeXml) {
+  /** @type {Map<string, string>} */
+  const map = new Map();
+  if (!themeXml) return map;
+  const scheme = firstBlock(themeXml, "<a:clrScheme", "</a:clrScheme>");
+  if (!scheme) return map;
+  for (const name of SCHEME_COLOR_NAMES) {
+    const block = firstBlock(scheme, `<a:${name}`, `</a:${name}>`);
+    if (!block) continue;
+    const hex = hexFromColorChoice(block);
+    if (hex) map.set(name, hex);
+  }
+  return map;
+}
+
+function resolveSchemeColor(val, ctx) {
+  if (!val || !ctx) return null;
+  const key = SCHEME_COLOR_ALIASES[val] || val;
+  const hex = ctx.schemeColors instanceof Map ? ctx.schemeColors.get(key) : null;
+  if (hex) return hex;
+  if (ctx.importFlags && !ctx.importFlags.unresolvedScheme) {
+    ctx.importFlags.unresolvedScheme = true;
+    ctx.warnings.push(
+      `unresolved schemeClr '${val}'; falling back to default`,
+    );
+  }
+  return null;
+}
+
+function parseColorFromFragment(fragment, ctx) {
+  const srgbStart = indexOfOpenTag(fragment, "<a:srgbClr", 0);
+  if (srgbStart >= 0) {
+    const end = fragment.indexOf(">", srgbStart);
+    const tag = end >= 0 ? fragment.slice(srgbStart, end + 1) : "";
+    const val = attrAny(tag, "val");
+    if (val && /^[0-9A-Fa-f]{6}$/.test(val)) return `#${val}`;
+  }
+  const schemeStart = indexOfOpenTag(fragment, "<a:schemeClr", 0);
+  if (schemeStart >= 0) {
+    const end = fragment.indexOf(">", schemeStart);
+    const tag = end >= 0 ? fragment.slice(schemeStart, end + 1) : "";
+    const val = attrAny(tag, "val");
+    if (val) return resolveSchemeColor(val, ctx);
+  }
+  return null;
+}
+
+function parseSolidFillHex(xml, ctx) {
+  const fill = firstBlock(xml, "<a:solidFill", "</a:solidFill>");
+  if (!fill) return null;
+  return parseColorFromFragment(fill, ctx);
 }
 
 function mapChildEmu(parent, child) {
@@ -442,25 +511,25 @@ function extractPlainText(xml) {
   return paras.map(extractParagraphText).join("\n");
 }
 
-function parseRunProperties(fragment) {
+function parseRunProperties(fragment, ctx) {
   /** @type {{ bold?: boolean, fontSize?: number, color?: string }} */
   const style = {};
   const sz = fragment.match(/\bsz="(\d+)"/);
   if (sz) style.fontSize = Math.max(1, Math.round(Number(sz[1]) / 100));
   if (/\bb="1"/.test(fragment)) style.bold = true;
-  const color = fragment.match(/<a:srgbClr val="([0-9A-Fa-f]{6})"/);
-  if (color) style.color = `#${color[1]}`;
+  const color = parseColorFromFragment(fragment, ctx);
+  if (color) style.color = color;
   return style;
 }
 
-function runStyleFromR(rXml) {
+function runStyleFromR(rXml, ctx) {
   const rPrBlock = firstBlock(rXml, "<a:rPr", "</a:rPr>");
-  if (rPrBlock) return parseRunProperties(rPrBlock);
+  if (rPrBlock) return parseRunProperties(rPrBlock, ctx);
   const start = indexOfOpenTag(rXml, "<a:rPr", 0);
   if (start < 0) return {};
   const end = rXml.indexOf(">", start);
   if (end < 0) return {};
-  return parseRunProperties(rXml.slice(start, end + 1));
+  return parseRunProperties(rXml.slice(start, end + 1), ctx);
 }
 
 function resolvedRunStyle(style) {
@@ -489,7 +558,7 @@ function appendNewline(runs) {
   runs.push({ text: "\n" });
 }
 
-function extractParagraphRuns(paragraphXml) {
+function extractParagraphRuns(paragraphXml, ctx) {
   /** @type {{ text: string, bold?: boolean, fontSize?: number, color?: string }[]} */
   const runs = [];
   let i = 0;
@@ -509,13 +578,13 @@ function extractParagraphRuns(paragraphXml) {
     const text = collectTagTexts(rXml, "<a:t", "</a:t>")
       .map(unescapeXmlText)
       .join("");
-    runs.push({ text, ...runStyleFromR(rXml) });
+    runs.push({ text, ...runStyleFromR(rXml, ctx) });
     i = close + 6;
   }
   return runs;
 }
 
-function extractRichRuns(xml) {
+function extractRichRuns(xml, ctx) {
   const paras = sliceBlocks(xml, "<a:p", "</a:p>");
   if (paras.length === 0) {
     const plain = collectTagTexts(xml, "<a:t", "</a:t>")
@@ -527,7 +596,7 @@ function extractRichRuns(xml) {
   const runs = [];
   for (let pi = 0; pi < paras.length; pi += 1) {
     if (pi > 0) appendNewline(runs);
-    runs.push(...extractParagraphRuns(paras[pi]));
+    runs.push(...extractParagraphRuns(paras[pi], ctx));
   }
   return runs;
 }
@@ -672,7 +741,7 @@ function nextElementId(ctx, kind) {
 }
 
 function buildTextElement(sp, bounds, ctx) {
-  const extracted = trimRichRuns(extractRichRuns(sp));
+  const extracted = trimRichRuns(extractRichRuns(sp, ctx));
   if (extracted.length === 0) return null;
   const id = nextElementId(ctx, "t");
   const runs = capRichRuns(
@@ -710,130 +779,157 @@ function buildTextElement(sp, bounds, ctx) {
   };
 }
 
-function parseLeafShapes(xml, ctx) {
-  const shapes = sliceBlocks(xml, "<p:sp", "</p:sp>");
-  for (const sp of shapes) {
-    const bounds = boundsFromXml(sp, ctx.parentXfrm);
-    if (!bounds) continue;
+function parseSpBlock(sp, ctx) {
+  const bounds = boundsFromXml(sp, ctx.parentXfrm);
+  if (!bounds) return;
+  const spPr = firstBlock(sp, "<p:spPr", "</p:spPr>") || sp;
+  const fillHex = parseSolidFillHex(spPr, ctx);
+  const prst = attr(sp, "prst") || "rect";
+  const noFill = /<a:noFill\/>/.test(spPr);
+  const textEl = buildTextElement(sp, bounds, ctx);
 
-    const fillM = sp.match(
-      /<a:solidFill>\s*<a:srgbClr val="([0-9A-Fa-f]{6})"/,
-    );
-    const prst = attr(sp, "prst") || "rect";
-    const noFill = /<a:noFill\/>/.test(sp);
-    const textEl = buildTextElement(sp, bounds, ctx);
-
-    if (textEl) {
-      ctx.elements.push(textEl);
-    } else if (fillM && !noFill) {
-      const shapeMap = {
-        rect: "rect",
-        roundRect: "roundRect",
-        ellipse: "ellipse",
-        circle: "ellipse",
-      };
-      ctx.elements.push({
-        id: nextElementId(ctx, "s"),
-        type: "shape",
-        bounds,
-        shape: shapeMap[prst] || "rect",
-        fill: `#${fillM[1]}`,
-      });
-    }
-  }
-
-  const pics = sliceBlocks(xml, "<p:pic", "</p:pic>");
-  for (const pic of pics) {
-    const bounds = boundsFromXml(pic, ctx.parentXfrm);
-    const embed = pic.match(/r:embed="(rId\d+)"/);
-    if (!bounds || !embed) continue;
-    const mediaPath = ctx.relIdToMediaPath.get(embed[1]);
-    if (!mediaPath) continue;
+  if (textEl) {
+    ctx.elements.push(textEl);
+  } else if (fillHex && !noFill) {
+    const shapeMap = {
+      rect: "rect",
+      roundRect: "roundRect",
+      ellipse: "ellipse",
+      circle: "ellipse",
+    };
     ctx.elements.push({
-      id: nextElementId(ctx, "i"),
-      type: "image",
+      id: nextElementId(ctx, "s"),
+      type: "shape",
       bounds,
-      src: mediaPath,
+      shape: shapeMap[prst] || "rect",
+      fill: fillHex,
     });
   }
+}
 
-  const frames = sliceBlocks(xml, "<p:graphicFrame", "</p:graphicFrame>");
-  for (const frame of frames) {
-    const bounds = boundsFromXml(frame, ctx.parentXfrm);
-    if (!bounds) continue;
+function parsePicBlock(pic, ctx) {
+  const bounds = boundsFromXml(pic, ctx.parentXfrm);
+  const embed = pic.match(/r:embed="(rId\d+)"/);
+  if (!bounds || !embed) return;
+  const mediaPath = ctx.relIdToMediaPath.get(embed[1]);
+  if (!mediaPath) return;
+  ctx.elements.push({
+    id: nextElementId(ctx, "i"),
+    type: "image",
+    bounds,
+    src: mediaPath,
+  });
+}
 
-    if (/<a:tbl[\s>]/.test(frame)) {
-      const rowXmls = sliceBlocks(frame, "<a:tr", "</a:tr>");
-      if (rowXmls.length === 0) continue;
-      /** @type {string[][]} */
-      const rows = [];
-      for (const rowXml of rowXmls) {
-        const cells = sliceBlocks(rowXml, "<a:tc", "</a:tc>").map((cellXml) => {
-          return extractPlainText(cellXml).trim();
-        });
-        if (cells.length) rows.push(cells);
-      }
-      if (rows.length === 0) continue;
-      ctx.elements.push({
-        id: nextElementId(ctx, "tbl"),
-        type: "table",
-        bounds,
-        header: true,
-        rows,
+function parseGraphicFrameBlock(frame, ctx) {
+  const bounds = boundsFromXml(frame, ctx.parentXfrm);
+  if (!bounds) return;
+
+  if (/<a:tbl[\s>]/.test(frame)) {
+    const rowXmls = sliceBlocks(frame, "<a:tr", "</a:tr>");
+    if (rowXmls.length === 0) return;
+    /** @type {string[][]} */
+    const rows = [];
+    for (const rowXml of rowXmls) {
+      const cells = sliceBlocks(rowXml, "<a:tc", "</a:tc>").map((cellXml) => {
+        return extractPlainText(cellXml).trim();
       });
-      continue;
+      if (cells.length) rows.push(cells);
     }
+    if (rows.length === 0) return;
+    ctx.elements.push({
+      id: nextElementId(ctx, "tbl"),
+      type: "table",
+      bounds,
+      header: true,
+      rows,
+    });
+    return;
+  }
 
-    const chartEmbed = frame.match(
-      /<c:chart[^>]*r:id="(rId\d+)"|r:id="(rId\d+)"[^>]*\/?>/,
-    );
-    const chartRid = chartEmbed?.[1] || chartEmbed?.[2];
-    if (chartRid && ctx.relIdToChartXml.has(chartRid)) {
-      const parsed = parseChartXml(ctx.relIdToChartXml.get(chartRid) || "");
-      if (parsed) {
-        ctx.elements.push({
-          id: nextElementId(ctx, "ch"),
-          type: "chart",
-          bounds,
-          chartType: parsed.chartType,
-          ...(parsed.title ? { title: parsed.title } : {}),
-          series: parsed.series,
-        });
-      }
+  const chartEmbed = frame.match(
+    /<c:chart[^>]*r:id="(rId\d+)"|r:id="(rId\d+)"[^>]*\/?>/,
+  );
+  const chartRid = chartEmbed?.[1] || chartEmbed?.[2];
+  if (chartRid && ctx.relIdToChartXml.has(chartRid)) {
+    const parsed = parseChartXml(ctx.relIdToChartXml.get(chartRid) || "");
+    if (parsed) {
+      ctx.elements.push({
+        id: nextElementId(ctx, "ch"),
+        type: "chart",
+        bounds,
+        chartType: parsed.chartType,
+        ...(parsed.title ? { title: parsed.title } : {}),
+        series: parsed.series,
+      });
     }
   }
 }
 
-function parseShapeTree(xml, ctx, depth) {
-  const taken = takeGroupShapes(xml);
-  if (taken.truncated) {
-    ctx.warnings.push(
-      `page ${ctx.pageIndex}: skipped grouped shape container(s) (p:grpSp); unclosed group`,
-    );
+function nextShapeChild(xml, from) {
+  let best = null;
+  for (const spec of SHAPE_CHILD_SPECS) {
+    const start = indexOfOpenTag(xml, spec.open, from);
+    if (start < 0) continue;
+    if (!best || start < best.start) best = { ...spec, start };
   }
-  parseLeafShapes(taken.xml, ctx);
-  for (const group of taken.groups) {
-    if (depth >= GRP_SP_MAX_DEPTH) {
-      ctx.warnings.push(
-        `page ${ctx.pageIndex}: skipped grouped shape container (p:grpSp); nesting exceeds ${GRP_SP_MAX_DEPTH}`,
-      );
-      continue;
-    }
-    const xfrm = parseGroupXfrm(group.xml);
-    if (!xfrm) {
-      ctx.warnings.push(
-        `page ${ctx.pageIndex}: skipped grouped shape container (p:grpSp); missing or invalid a:xfrm`,
-      );
-      continue;
-    }
-    parseShapeTree(
-      innerXml(group.xml, "p:grpSp"),
-      {
-        ...ctx,
-        parentXfrm: composeGroupXfrm(ctx.parentXfrm, xfrm),
-      },
-      depth + 1,
+  return best;
+}
+
+function expandGroupBlock(groupXml, ctx, depth) {
+  if (depth >= GRP_SP_MAX_DEPTH) {
+    ctx.warnings.push(
+      `page ${ctx.pageIndex}: skipped grouped shape container (p:grpSp); nesting exceeds ${GRP_SP_MAX_DEPTH}`,
     );
+    return;
+  }
+  const xfrm = parseGroupXfrm(groupXml);
+  if (!xfrm) {
+    ctx.warnings.push(
+      `page ${ctx.pageIndex}: skipped grouped shape container (p:grpSp); missing or invalid a:xfrm`,
+    );
+    return;
+  }
+  if (xfrm.rotOrFlip) {
+    ctx.warnings.push(
+      `page ${ctx.pageIndex}: skipped grouped shape container (p:grpSp); rot/flip is not represented in IR`,
+    );
+    return;
+  }
+  parseShapeTree(
+    innerXml(groupXml, "p:grpSp"),
+    {
+      ...ctx,
+      parentXfrm: composeGroupXfrm(ctx.parentXfrm, xfrm),
+    },
+    depth + 1,
+  );
+}
+
+function parseShapeTree(xml, ctx, depth) {
+  let from = 0;
+  while (from < xml.length) {
+    const next = nextShapeChild(xml, from);
+    if (!next) break;
+    const extracted = extractBalancedBlock(xml, next.start, next.open, next.close);
+    if (!extracted) {
+      if (next.kind === "grpSp") {
+        ctx.warnings.push(
+          `page ${ctx.pageIndex}: skipped grouped shape container(s) (p:grpSp); unclosed group`,
+        );
+      }
+      break;
+    }
+    from = extracted.end;
+    if (next.kind === "grpSp") {
+      expandGroupBlock(extracted.block, ctx, depth);
+    } else if (next.kind === "sp") {
+      parseSpBlock(extracted.block, ctx);
+    } else if (next.kind === "pic") {
+      parsePicBlock(extracted.block, ctx);
+    } else if (next.kind === "graphicFrame") {
+      parseGraphicFrameBlock(extracted.block, ctx);
+    }
   }
 }
 
@@ -844,6 +940,7 @@ function parseShapeTree(xml, ctx, depth) {
  * @param {Map<string, string>} relIdToChartXml  rId → chart XML string
  * @param {number} pageIndex
  * @param {string[]} [warnings]
+ * @param {{ schemeColors?: Map<string, string>, importFlags?: { unresolvedScheme?: boolean } }} [extras]
  */
 function parseSlide(
   slideXml,
@@ -851,6 +948,7 @@ function parseSlide(
   relIdToChartXml,
   pageIndex,
   warnings = [],
+  extras = {},
 ) {
   /** @type {object[]} */
   const elements = [];
@@ -872,11 +970,61 @@ function parseSlide(
       elements,
       ids: { n: 0 },
       parentXfrm: IDENTITY_GROUP_XFRM,
+      schemeColors: extras.schemeColors || new Map(),
+      importFlags: extras.importFlags || {},
     },
     0,
   );
 
   return { background, elements };
+}
+
+/**
+ * Import is lossy: intersect element bounds with the slide canvas so
+ * validateDeck is not fail-closed by off-canvas group transforms.
+ * @param {object[]} elements
+ * @param {[number, number]} canvas
+ * @param {string[]} warnings
+ * @param {number} pageIndex
+ */
+function clampImportedElements(elements, canvas, warnings, pageIndex) {
+  const [cw, ch] = canvas;
+  const out = [];
+  for (const el of elements) {
+    const bounds = el.bounds;
+    if (
+      !Array.isArray(bounds) ||
+      bounds.length !== 4 ||
+      !bounds.every((n) => Number.isFinite(n))
+    ) {
+      warnings.push(
+        `page ${pageIndex}: skipped off-canvas element ${el.id} bounds=${JSON.stringify(bounds)}`,
+      );
+      continue;
+    }
+    const [x, y, w, h] = bounds;
+    const ix = Math.max(0, x);
+    const iy = Math.max(0, y);
+    const ix2 = Math.min(cw, x + w);
+    const iy2 = Math.min(ch, y + h);
+    const nw = ix2 - ix;
+    const nh = iy2 - iy;
+    if (nw < 1 || nh < 1) {
+      warnings.push(
+        `page ${pageIndex}: skipped off-canvas element ${el.id} bounds=[${x}, ${y}, ${w}, ${h}] canvas=[${cw}, ${ch}]`,
+      );
+      continue;
+    }
+    if (ix !== x || iy !== y || nw !== w || nh !== h) {
+      warnings.push(
+        `page ${pageIndex}: clamped element ${el.id} from [${x}, ${y}, ${w}, ${h}] to [${ix}, ${iy}, ${nw}, ${nh}]`,
+      );
+      out.push({ ...el, bounds: [ix, iy, nw, nh] });
+      continue;
+    }
+    out.push(el);
+  }
+  return out;
 }
 
 /** Read one regular PPTX file without allocating beyond the archive ceiling. */
@@ -1351,6 +1499,7 @@ export async function importPptx(pptxPath, outDir, options = {}) {
     (await readZipText(readZipEntry, "ppt/_rels/presentation.xml.rels")) || "";
   const presentationRels = parseRelationships(presentationRelsXml);
   const ridToSlide = new Map();
+  let themePath = "ppt/theme/theme1.xml";
   for (const rel of presentationRels) {
     const target = resolveZipTarget(
       "ppt/_rels/presentation.xml.rels",
@@ -1359,7 +1508,17 @@ export async function importPptx(pptxPath, outDir, options = {}) {
     if (/^ppt\/slides\/slide\d+\.xml$/i.test(target)) {
       ridToSlide.set(rel.id, target);
     }
+    if (
+      /^ppt\/theme\/theme\d+\.xml$/i.test(target) ||
+      (rel.type && /\/theme$/i.test(rel.type))
+    ) {
+      themePath = target;
+    }
   }
+  const schemeColors = parseClrScheme(
+    (await readZipText(readZipEntry, themePath)) || "",
+  );
+  const importFlags = { unresolvedScheme: false };
 
   let slidePaths = [];
   if (presXml) {
@@ -1468,11 +1627,12 @@ export async function importPptx(pptxPath, outDir, options = {}) {
       relIdToChartXml,
       si + 1,
       warnings,
+      { schemeColors, importFlags },
     );
     pages.push({
       id: `page-${si + 1}`,
       ...(background ? { background } : {}),
-      elements,
+      elements: clampImportedElements(elements, size, warnings, si + 1),
     });
   }
 

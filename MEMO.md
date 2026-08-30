@@ -2,6 +2,14 @@
 
 ## Changelog Memo
 
+### 2026-08-30(第七轮)
+
+- [变更] 导入契约:越界元素 clamp 进画布/亚像素丢弃+警告,不再整包失败;文档序(z-order)保真;rot/flip 组回退跳过;schemeClr 经 theme1.xml 映射(忽略亮度修饰);补组内 pic 缩放与深度 8/9 边界造样。
+- [新增] 预览图表内联 SVG 迷你图(分组柱/线/面积/饼/环,采样封顶、全转义、零/负值防 NaN),替代虚线占位。
+- [变更] hardening 的"提交前校验"回归从旧越界契约改为字符串上限场景(坏媒体场景原有独立回归)。
+- [验证] 全套 200/200;dogfood 12/12;随机种子 707070 120/120+负向 10/10;LibreOffice 渲染 6/6。
+- [DEFERRED] lumMod/shade 真正调色、叶子 rot/flip 几何、schemeClr phClr。
+
 ### 2026-08-30(第六轮)
 
 - [新增] 可选 PDF 导出:CLI `pdf` 命令、`exportDeckPdf` 公共 API、Studio「导出 PDF」按钮与 `/export.pdf` 端点(无 LibreOffice 时 501+`PDF_UNAVAILABLE`,`meta.pdfAvailable` 探测);隔离 profile、类型化错误,PPTX 导出依旧零外部依赖。

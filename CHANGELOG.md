@@ -1,6 +1,29 @@
 # Changelog
 
-## Unreleased — 2026-08-30 (round six)
+## Unreleased — 2026-08-30 (round seven)
+
+- **Import contract change:** off-canvas imported elements no longer fail the
+  whole package — partially outside bounds are clamped into the canvas and
+  fully outside (or sub-1px after clamping) elements are dropped, each with a
+  warning. `validateDeck` itself is unchanged; the pre-commit fail-closed
+  guarantee is re-anchored on IR resource ceilings and media validation
+  regressions.
+- Import preserves spTree document order (z-order): group children expand in
+  place instead of after sibling leaves.
+- Groups whose `a:xfrm` carries rotation or flips fall back to skip-with-warning
+  instead of importing silently wrong child positions (the IR has no
+  rotation/mirror semantics).
+- Import maps `a:schemeClr` through the package theme (`a:clrScheme`,
+  including `sysClr` and tx/bg aliases) for run colors and solid fills;
+  unknown scheme values fall back with a one-time warning. Luminance modifiers
+  are ignored (base color).
+- Verified previously-untested paths: grouped `p:pic` scaling and the depth-8
+  expand / depth-9 fallback boundary.
+- HTML preview renders charts as inline SVG mini-charts (grouped bars,
+  line/area, pie/doughnut with hole and full-circle handling, sampled points,
+  escaped labels/titles, NaN-proof zero/negative handling) instead of dashed
+  placeholders.
+- Tests: 200 total across 17 files, including a new preview mini-chart suite.
 
 - Optional PDF export via headless LibreOffice: new `pdf` CLI command,
   `exportDeckPdf` / `convertPptxToPdf` / `findSoffice` public API

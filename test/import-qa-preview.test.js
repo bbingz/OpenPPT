@@ -22,10 +22,14 @@ import { OpenPptError } from "../src/errors.js";
 import { RESOURCE_LIMITS } from "../src/resource-limits.js";
 import {
   grpSpXml,
+  nestedGrpSpXml,
+  picXml,
   pxToEmu,
   slideXmlWithBody,
   slideXmlWithText,
   spRectXml,
+  textSpXml,
+  theme1Xml,
   writeMinimalPptx,
 } from "./helpers/pptx.js";
 
@@ -691,6 +695,303 @@ describe("import / qa / preview", () => {
       assert.ok(el.text[limit - 1].text.includes(`r${limit - 1}`));
       assert.ok(el.text[limit - 1].text.includes(`r${limit}`));
       assert.ok(imp.warnings.some((w) => /richTextRunsPerElement|rich-text run/i.test(w)));
+    } finally {
+      rmSync(work, { recursive: true, force: true });
+    }
+  });
+
+  it("clamps partially off-canvas group children and skips fully off-canvas ones", async () => {
+    const work = mkdtempSync(join(tmpdir(), "openppt-import-clamp-"));
+    try {
+      const pptxPath = join(work, "clamp.pptx");
+      const xml = slideXmlWithBody(
+        grpSpXml({
+          offX: pxToEmu(940),
+          offY: pxToEmu(10),
+          cx: pxToEmu(40),
+          cy: pxToEmu(20),
+          chCx: pxToEmu(20),
+          chCy: pxToEmu(20),
+          children: `${spRectXml({
+            id: "9",
+            name: "partial",
+            offX: pxToEmu(5),
+            offY: 0,
+            cx: pxToEmu(10),
+            cy: pxToEmu(10),
+            fill: "FF0000",
+          })}${spRectXml({
+            id: "10",
+            name: "outside",
+            offX: pxToEmu(15),
+            offY: 0,
+            cx: pxToEmu(5),
+            cy: pxToEmu(10),
+            fill: "00FF00",
+          })}`,
+        }),
+      );
+      await writeMinimalPptx(pptxPath, { slides: [{ xml }] });
+      const imp = await importPptx(pptxPath, join(work, "out"), { force: true });
+      const loaded = loadDeck(imp.deckPath);
+      validateDeck(loaded.deck, {
+        projectRoot: loaded.projectRoot,
+        checkMedia: true,
+      });
+      const shapes = loaded.deck.pages[0].elements.filter((el) => el.type === "shape");
+      assert.equal(shapes.length, 1);
+      assert.deepEqual(shapes[0].bounds, [950, 10, 10, 10]);
+      assert.equal(shapes[0].fill, "#FF0000");
+      assert.ok(imp.warnings.some((w) => /clamped/i.test(w)));
+      assert.ok(imp.warnings.some((w) => /skipped off-canvas element/i.test(w)));
+    } finally {
+      rmSync(work, { recursive: true, force: true });
+    }
+  });
+
+  it("preserves spTree document order across leaves and groups", async () => {
+    const work = mkdtempSync(join(tmpdir(), "openppt-import-zorder-"));
+    try {
+      const pptxPath = join(work, "z.pptx");
+      const xml = slideXmlWithBody(
+        `${textSpXml({ id: "2", name: "first", text: "FIRST", offY: 0 })}${grpSpXml({
+          id: "8",
+          offX: 0,
+          offY: pxToEmu(50),
+          cx: pxToEmu(200),
+          cy: pxToEmu(50),
+          chCx: pxToEmu(200),
+          chCy: pxToEmu(50),
+          children: textSpXml({
+            id: "9",
+            name: "mid",
+            text: "GROUPED",
+            offX: 0,
+            offY: 0,
+            cx: pxToEmu(200),
+            cy: pxToEmu(40),
+          }),
+        })}${textSpXml({
+          id: "10",
+          name: "last",
+          text: "LAST",
+          offY: pxToEmu(120),
+        })}`,
+      );
+      await writeMinimalPptx(pptxPath, { slides: [{ xml }] });
+      const imp = await importPptx(pptxPath, join(work, "out"), { force: true });
+      const loaded = loadDeck(imp.deckPath);
+      const texts = loaded.deck.pages[0].elements.map((el) =>
+        typeof el.text === "string"
+          ? el.text
+          : (el.text || []).map((run) => run.text).join(""),
+      );
+      assert.deepEqual(texts, ["FIRST", "GROUPED", "LAST"]);
+    } finally {
+      rmSync(work, { recursive: true, force: true });
+    }
+  });
+
+  it("skips groups whose xfrm has non-zero rot", async () => {
+    const work = mkdtempSync(join(tmpdir(), "openppt-import-rot-"));
+    try {
+      const pptxPath = join(work, "rot.pptx");
+      const xml = slideXmlWithBody(
+        `${textSpXml({
+          id: "2",
+          name: "leaf",
+          text: "LEAF",
+          rot: 60000,
+        })}${grpSpXml({
+          id: "8",
+          rot: 5400000,
+          offX: pxToEmu(20),
+          offY: pxToEmu(20),
+          cx: pxToEmu(40),
+          cy: pxToEmu(40),
+          chCx: pxToEmu(40),
+          chCy: pxToEmu(40),
+          children: spRectXml({
+            id: "9",
+            name: "rotated-child",
+            offX: 0,
+            offY: 0,
+            cx: pxToEmu(20),
+            cy: pxToEmu(20),
+          }),
+        })}`,
+      );
+      await writeMinimalPptx(pptxPath, { slides: [{ xml }] });
+      const imp = await importPptx(pptxPath, join(work, "out"), { force: true });
+      const loaded = loadDeck(imp.deckPath);
+      const page = loaded.deck.pages[0];
+      const texts = page.elements.filter((el) => el.type === "text");
+      const shapes = page.elements.filter((el) => el.type === "shape");
+      assert.equal(texts.length, 1);
+      assert.equal(texts[0].text, "LEAF");
+      assert.equal(shapes.length, 0);
+      assert.ok(imp.warnings.some((w) => /rot|flip/i.test(w)));
+    } finally {
+      rmSync(work, { recursive: true, force: true });
+    }
+  });
+
+  it("skips groups whose xfrm has flipH or flipV", async () => {
+    const work = mkdtempSync(join(tmpdir(), "openppt-import-flip-"));
+    try {
+      const pptxPath = join(work, "flip.pptx");
+      const xml = slideXmlWithBody(
+        grpSpXml({
+          flipH: true,
+          offX: pxToEmu(20),
+          offY: pxToEmu(20),
+          cx: pxToEmu(40),
+          cy: pxToEmu(40),
+          chCx: pxToEmu(40),
+          chCy: pxToEmu(40),
+          children: spRectXml({
+            id: "9",
+            name: "flipped-child",
+            offX: 0,
+            offY: 0,
+            cx: pxToEmu(20),
+            cy: pxToEmu(20),
+          }),
+        }),
+      );
+      await writeMinimalPptx(pptxPath, { slides: [{ xml }] });
+      const imp = await importPptx(pptxPath, join(work, "out"), { force: true });
+      const loaded = loadDeck(imp.deckPath);
+      const shapes = loaded.deck.pages[0].elements.filter((el) => el.type === "shape");
+      assert.equal(shapes.length, 0);
+      assert.ok(imp.warnings.some((w) => /flip|rot/i.test(w)));
+    } finally {
+      rmSync(work, { recursive: true, force: true });
+    }
+  });
+
+  it("maps schemeClr accent1 from theme1.xml for text and shape fill", async () => {
+    const work = mkdtempSync(join(tmpdir(), "openppt-import-scheme-"));
+    try {
+      const pptxPath = join(work, "scheme.pptx");
+      const xml = slideXmlWithBody(
+        `${textSpXml({
+          id: "2",
+          name: "t",
+          text: "Accent",
+          schemeText: "accent1",
+        })}${spRectXml({
+          id: "3",
+          name: "s",
+          offX: pxToEmu(10),
+          offY: pxToEmu(60),
+          cx: pxToEmu(40),
+          cy: pxToEmu(20),
+          fill: "00FF00",
+        }).replace(
+          '<a:srgbClr val="00FF00"/>',
+          '<a:schemeClr val="accent1"/>',
+        )}${textSpXml({
+          id: "4",
+          name: "alias",
+          text: "Alias",
+          offY: pxToEmu(100),
+          schemeText: "tx1",
+        })}`,
+      );
+      await writeMinimalPptx(pptxPath, {
+        slides: [{ xml }],
+        extraFiles: { "ppt/theme/theme1.xml": theme1Xml({ accent1: "CC3366", dk1: "112233" }) },
+      });
+      const imp = await importPptx(pptxPath, join(work, "out"), { force: true });
+      const loaded = loadDeck(imp.deckPath);
+      const texts = loaded.deck.pages[0].elements.filter((el) => el.type === "text");
+      const shapes = loaded.deck.pages[0].elements.filter((el) => el.type === "shape");
+      assert.equal(texts[0].color, "#CC3366");
+      assert.equal(shapes.length, 1);
+      assert.equal(shapes[0].fill, "#CC3366");
+      assert.equal(texts[1].color, "#112233");
+    } finally {
+      rmSync(work, { recursive: true, force: true });
+    }
+  });
+
+  it("expands a pic inside a scaled grpSp to exact slide px", async () => {
+    const work = mkdtempSync(join(tmpdir(), "openppt-import-grp-pic-"));
+    try {
+      const pptxPath = join(work, "pic.pptx");
+      const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+      const xml = slideXmlWithBody(
+        grpSpXml({
+          offX: pxToEmu(10),
+          offY: pxToEmu(10),
+          cx: pxToEmu(20),
+          cy: pxToEmu(20),
+          chCx: pxToEmu(10),
+          chCy: pxToEmu(10),
+          children: picXml({
+            id: "9",
+            name: "inner-pic",
+            offX: pxToEmu(1),
+            offY: pxToEmu(1),
+            cx: pxToEmu(4),
+            cy: pxToEmu(2),
+            embed: "rId9",
+          }),
+        }),
+      );
+      const rels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId9" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/image1.png"/>
+</Relationships>`;
+      await writeMinimalPptx(pptxPath, {
+        slides: [{ xml, rels }],
+        extraFiles: { "ppt/media/image1.png": png },
+      });
+      const imp = await importPptx(pptxPath, join(work, "out"), { force: true });
+      const loaded = loadDeck(imp.deckPath);
+      const images = loaded.deck.pages[0].elements.filter((el) => el.type === "image");
+      assert.equal(images.length, 1);
+      assert.deepEqual(images[0].bounds, [12, 12, 8, 4]);
+    } finally {
+      rmSync(work, { recursive: true, force: true });
+    }
+  });
+
+  it("expands eight nested groups and skips the ninth", async () => {
+    const work = mkdtempSync(join(tmpdir(), "openppt-import-depth-"));
+    try {
+      const pptxPath = join(work, "depth.pptx");
+      const leaf = spRectXml({
+        id: "99",
+        name: "deep",
+        offX: pxToEmu(10),
+        offY: pxToEmu(10),
+        cx: pxToEmu(20),
+        cy: pxToEmu(20),
+      });
+      const eight = nestedGrpSpXml(8, leaf);
+      const nine = nestedGrpSpXml(
+        9,
+        spRectXml({
+          id: "98",
+          name: "too-deep",
+          offX: pxToEmu(10),
+          offY: pxToEmu(40),
+          cx: pxToEmu(20),
+          cy: pxToEmu(20),
+          fill: "00FF00",
+        }),
+      );
+      const xml = slideXmlWithBody(`${eight}${nine}`);
+      await writeMinimalPptx(pptxPath, { slides: [{ xml }] });
+      const imp = await importPptx(pptxPath, join(work, "out"), { force: true });
+      const loaded = loadDeck(imp.deckPath);
+      const shapes = loaded.deck.pages[0].elements.filter((el) => el.type === "shape");
+      assert.equal(shapes.length, 1);
+      assert.deepEqual(shapes[0].bounds, [10, 10, 20, 20]);
+      assert.equal(shapes[0].fill, "#FF0000");
+      assert.ok(imp.warnings.some((w) => /nesting exceeds/i.test(w)));
     } finally {
       rmSync(work, { recursive: true, force: true });
     }

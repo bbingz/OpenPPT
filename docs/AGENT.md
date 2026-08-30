@@ -82,9 +82,11 @@ write and required to replace an existing file. Use the exported PPTX for final
 visual QA.
 
 Import is lossy. Grouped shapes (`p:grpSp`) are expanded with OOXML group-space
-transforms (`off`/`ext`/`chOff`/`chExt`); malformed, zero `chExt`, or over-deep
-(>8) groups still skip with a warning. Mixed run `b`/`sz`/`srgbClr` becomes IR
-rich text; homogeneous runs collapse to a plain string. Slide order follows
+transforms (`off`/`ext`/`chOff`/`chExt`) in XML document order; malformed, zero
+`chExt`, over-deep (>8), or `rot`/`flipH`/`flipV` groups skip with a warning.
+Off-canvas bounds are clamped (or dropped if <1px remains). Mixed run `b`/`sz`/
+`srgbClr` (and `schemeClr` via `theme1.xml` `clrScheme`, ignoring lumMod) becomes
+IR rich text; homogeneous runs collapse to a plain string. Slide order follows
 `p:sldIdLst` plus `presentation.xml.rels`, not `slideN.xml` filenames.
 
 ## Anti-patterns

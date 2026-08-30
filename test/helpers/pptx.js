@@ -188,15 +188,135 @@ export function grpSpXml({
   chCy = 0,
   children = "",
   xfrm = true,
+  rot,
+  flipH = false,
+  flipV = false,
 }) {
+  const attrs = [];
+  if (rot != null && rot !== "") attrs.push(`rot="${rot}"`);
+  if (flipH) attrs.push(`flipH="1"`);
+  if (flipV) attrs.push(`flipV="1"`);
+  const attrStr = attrs.length ? ` ${attrs.join(" ")}` : "";
   const xfrmXml = xfrm
-    ? `<a:xfrm><a:off x="${offX}" y="${offY}"/><a:ext cx="${cx}" cy="${cy}"/><a:chOff x="${chOffX}" y="${chOffY}"/><a:chExt cx="${chCx}" cy="${chCy}"/></a:xfrm>`
+    ? `<a:xfrm${attrStr}><a:off x="${offX}" y="${offY}"/><a:ext cx="${cx}" cy="${cy}"/><a:chOff x="${chOffX}" y="${chOffY}"/><a:chExt cx="${chCx}" cy="${chCy}"/></a:xfrm>`
     : "";
   return `<p:grpSp>
       <p:nvGrpSpPr><p:cNvPr id="${id}" name="${name}"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>
       <p:grpSpPr>${xfrmXml}</p:grpSpPr>
       ${children}
     </p:grpSp>`;
+}
+
+export function nestedGrpSpXml(depth, children, xfrm = {}) {
+  let inner = children;
+  for (let level = depth; level >= 1; level -= 1) {
+    inner = grpSpXml({
+      id: String(20 + level),
+      name: `nest${level}`,
+      offX: xfrm.offX ?? 0,
+      offY: xfrm.offY ?? 0,
+      cx: xfrm.cx ?? pxToEmu(100),
+      cy: xfrm.cy ?? pxToEmu(100),
+      chOffX: xfrm.chOffX ?? 0,
+      chOffY: xfrm.chOffY ?? 0,
+      chCx: xfrm.chCx ?? pxToEmu(100),
+      chCy: xfrm.chCy ?? pxToEmu(100),
+      children: inner,
+    });
+  }
+  return inner;
+}
+
+export function picXml({
+  id = "2",
+  name = "pic",
+  offX,
+  offY,
+  cx,
+  cy,
+  embed = "rId9",
+}) {
+  return `<p:pic>
+      <p:nvPicPr><p:cNvPr id="${id}" name="${name}"/><p:cNvPicPr/><p:nvPr/></p:nvPicPr>
+      <p:blipFill><a:blip r:embed="${embed}"/></p:blipFill>
+      <p:spPr><a:xfrm><a:off x="${offX}" y="${offY}"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm></p:spPr>
+    </p:pic>`;
+}
+
+export function textSpXml({
+  id = "2",
+  name = "t",
+  offX = 0,
+  offY = 0,
+  cx = 1828800,
+  cy = 457200,
+  text = "",
+  rot,
+  fill,
+  schemeFill,
+  schemeText,
+}) {
+  const rotAttr = rot != null ? ` rot="${rot}"` : "";
+  let fillXml = "";
+  if (schemeFill) {
+    fillXml = `<a:solidFill><a:schemeClr val="${schemeFill}"/></a:solidFill>`;
+  } else if (fill) {
+    fillXml = `<a:solidFill><a:srgbClr val="${fill}"/></a:solidFill>`;
+  }
+  let txBody = "";
+  if (text !== "" || schemeText) {
+    const rPr = schemeText
+      ? `<a:rPr sz="1800"><a:solidFill><a:schemeClr val="${schemeText}"><a:lumMod val="60000"/></a:schemeClr></a:solidFill></a:rPr>`
+      : `<a:rPr/>`;
+    txBody = `<p:txBody><a:bodyPr/><a:p><a:r>${rPr}<a:t>${text}</a:t></a:r></a:p></p:txBody>`;
+  }
+  return `<p:sp>
+      <p:nvSpPr><p:cNvPr id="${id}" name="${name}"/><p:cNvSpPr ${text !== "" || schemeText ? 'txBox="1"' : ""}/><p:nvPr/></p:nvSpPr>
+      <p:spPr><a:xfrm${rotAttr}><a:off x="${offX}" y="${offY}"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm>
+        ${fillXml}
+      </p:spPr>
+      ${txBody}
+    </p:sp>`;
+}
+
+export function theme1Xml({
+  dk1 = "000000",
+  lt1 = "FFFFFF",
+  dk2 = "1F497D",
+  lt2 = "EEECE1",
+  accent1 = "CC3366",
+  accent2 = "C0504D",
+  accent3 = "9BBB59",
+  accent4 = "8064A2",
+  accent5 = "4BACC6",
+  accent6 = "F79646",
+  hlink = "0000FF",
+  folHlink = "800080",
+} = {}) {
+  const sys = (name, last, sysVal) =>
+    `<a:${name}><a:sysClr val="${sysVal}" lastClr="${last}"/></a:${name}>`;
+  const srgb = (name, val) =>
+    `<a:${name}><a:srgbClr val="${val}"/></a:${name}>`;
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<a:theme xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" name="OpenPPTTest">
+  <a:themeElements>
+    <a:clrScheme name="Test">
+      ${sys("dk1", dk1, "windowText")}
+      ${sys("lt1", lt1, "window")}
+      ${srgb("dk2", dk2)}
+      ${srgb("lt2", lt2)}
+      ${srgb("accent1", accent1)}
+      ${srgb("accent2", accent2)}
+      ${srgb("accent3", accent3)}
+      ${srgb("accent4", accent4)}
+      ${srgb("accent5", accent5)}
+      ${srgb("accent6", accent6)}
+      ${srgb("hlink", hlink)}
+      ${srgb("folHlink", folHlink)}
+    </a:clrScheme>
+  </a:themeElements>
+</a:theme>
+`;
 }
 
 /** 24-byte PNG signature + IHDR width/height fields (no valid image payload). */

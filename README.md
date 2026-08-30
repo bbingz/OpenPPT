@@ -206,8 +206,8 @@ Do **not** call any Kimi WASM, neo-ppt mirror, or `www.kimi.com` export path.
 Use **Bun**, not Node, for install/test/export in this project.
 
 The HTML preview is an offline structural approximation, not a pixel-faithful
-PowerPoint renderer; charts appear as placeholders. Inspect the exported PPTX
-for final visual QA.
+PowerPoint renderer; charts render as simplified inline mini-charts (sampled
+points, minimal axes). Inspect the exported PPTX for final visual QA.
 
 ## Current capabilities (v1.5.0 plus Unreleased hardening)
 
