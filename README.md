@@ -60,6 +60,28 @@ bun bin/openppt.js export templates/pitch-skeleton/deck.json -o out/pitch.pptx -
 
 After linking, the binary name is `openppt` (shebang: `#!/usr/bin/env bun`).
 
+### Web workbench (OpenPPT Studio)
+
+Use OpenPPT without the command line — a local, offline, dependency-free web
+UI served by `Bun.serve` on **127.0.0.1 only**:
+
+```bash
+bun bin/openppt.js serve            # http://127.0.0.1:7357/
+bun bin/openppt.js serve --open     # also open the browser (macOS)
+bun bin/openppt.js serve --port 8080 --data-dir ~/decks
+```
+
+Studio lets you create projects (blank / pitch skeleton / from a markdown
+outline / lossy PPTX import), edit `deck.json` with live schema validation,
+inspect the structural preview and QA report, upload `media/` images
+(extension + magic-byte checked), and download the exported `.pptx`.
+
+Every Studio project is a plain folder under `--data-dir`
+(default `~/.openppt/projects`): `deck.json` + `media/` — fully interchangeable
+with the CLI and library workflows above. The preview iframe is sandboxed and
+served with a strict CSP; media uploads enforce the same fail-closed validation
+as export.
+
 ### Agent skill
 
 Thin skill for Claude Code / Codex / Cursor (and any SKILL.md host):
@@ -190,10 +212,13 @@ for final visual QA.
 - Multi-file decks, rich text, themes, templates, `init`, and `from-outline`
 - Lossy PPTX import for text, shapes, images, tables, and best-effort charts
 - Fail-closed validation/resource ceilings, structural QA, and offline structural preview
+- Local web workbench (`serve` → OpenPPT Studio): project management, editing,
+  validation, preview, QA, media upload, and PPTX download in the browser
 
 ## Explicitly deferred or out of product scope
 
-- Pixel-faithful preview or a full browser WYSIWYG editor
+- Pixel-faithful preview or a full browser WYSIWYG editor (Studio edits IR
+  source with structural preview — it is not a WYSIWYG canvas)
 - Animations, transitions, embedded video, and font-embedding parity
 - Lossless PPTX → IR round-trip
 - Optional remote-image fetching

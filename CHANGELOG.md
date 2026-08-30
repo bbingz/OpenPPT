@@ -1,5 +1,26 @@
 # Changelog
 
+## Unreleased — 2026-08-30
+
+- New `serve` command starts **OpenPPT Studio**, a local offline web workbench
+  (`Bun.serve`, no new dependencies, binds 127.0.0.1 only): project list plus
+  create flows (blank / skeleton / markdown outline / lossy PPTX import),
+  `deck.json` editing with draft autosave and JSON error location, fail-closed
+  validate, structural preview in a sandboxed iframe (strict CSP), QA report,
+  media upload/serve/delete, and PPTX download.
+- Studio projects are plain CLI-compatible folders (`deck.json` + `media/`)
+  under `--data-dir` (default `~/.openppt/projects`); deck saves go through the
+  existing atomic writer and must parse as JSON before touching disk.
+- Server hardening: allowlisted project ids (`[a-z0-9-]`) and media names with
+  containment checks on every path, upload ceilings from `RESOURCE_LIMITS`,
+  extension + magic-byte enforcement on media uploads, `nosniff`/`no-store`
+  everywhere, and a static-file manifest (no directory serving).
+- Public API adds `startWebServer`; package ships `web/`; production audit
+  surface manifest re-pinned for the new `files`/`scripts` entries.
+- New `test/server.test.js` covers create/list/save/validate/preview escaping,
+  QA, export unpack, media magic-byte and traversal rejection, import
+  round-trip, and delete (180 tests total).
+
 ## Unreleased — 2026-08-29
 
 - Fail-closed numeric ceilings: `fontSize` 1–4000pt and `lineWidth`/`borderWidth` 0–1584pt in schema plus runtime; `fontSize: 1e308` no longer writes `sz="Infinity"`. Table `colW` stays weight-based (existing overflow-sum rejection), not capped at 1584.

@@ -20,6 +20,7 @@ const COMMANDS = new Set([
   "preview",
   "init",
   "from-outline",
+  "serve",
 ]);
 
 function printHelp() {
@@ -34,6 +35,7 @@ Usage:
   bun bin/openppt.js import       <file.pptx> -o <project-dir> [--force]
   bun bin/openppt.js qa           <deck.json|yaml> [--fail-on low|med|high|critical]
   bun bin/openppt.js preview      <deck.json|yaml> -o <out.html> [--force]
+  bun bin/openppt.js serve        [--port 7357] [--data-dir <dir>] [--open]
   bun bin/openppt.js -h | --help
   bun bin/openppt.js -V | --version
 
@@ -46,6 +48,8 @@ Notes:
   - Export uses pptxgenjs only (no Kimi/neo-ppt WASM)
   - import is lossy (text/shapes/images/tables + best-effort charts)
   - qa --fail-on default: high
+  - serve: local web workbench (OpenPPT Studio) on 127.0.0.1; projects live in
+    --data-dir (default ~/.openppt/projects), each one a CLI-compatible folder
   - Runtime: Bun
 `);
 }
@@ -61,6 +65,9 @@ function parseArgs(argv) {
     theme: null,
     title: null,
     skeleton: false,
+    port: null,
+    dataDir: null,
+    open: false,
     help: false,
     version: false,
     warnings: [],
@@ -159,6 +166,25 @@ function parseArgs(argv) {
       opts.output = takeValue(a);
       continue;
     }
+    if (a === "--port") {
+      noteFlag("--port");
+      const value = args.shift();
+      if (value === undefined || !/^\d{1,5}$/.test(value) || Number(value) > 65535) {
+        throw new Error(`--port requires 0-65535 (got ${value ?? "nothing"})`);
+      }
+      opts.port = Number(value);
+      continue;
+    }
+    if (a === "--data-dir") {
+      noteFlag("--data-dir");
+      opts.dataDir = takeValue(a);
+      continue;
+    }
+    if (a === "--open") {
+      noteFlag("--open");
+      opts.open = true;
+      continue;
+    }
     if (a.startsWith("-")) {
       throw new Error(`Unknown option: ${a}`);
     }
@@ -176,6 +202,7 @@ function assertCommandOptions(opts) {
     import: new Set(["output", "force"]),
     qa: new Set(["failOn"]),
     preview: new Set(["output", "force"]),
+    serve: new Set(["port", "dataDir", "open"]),
   };
   const labels = {
     output: "-o/--output",
@@ -184,11 +211,16 @@ function assertCommandOptions(opts) {
     theme: "--theme",
     title: "--title",
     skeleton: "--skeleton",
+    dataDir: "--data-dir",
+    open: "--open",
   };
   for (const [key, label] of Object.entries(labels)) {
     if (opts[key] && !allowed[opts.command].has(key)) {
       throw new Error(`${opts.command} does not accept ${label}`);
     }
+  }
+  if (opts.port !== null && !allowed[opts.command].has("port")) {
+    throw new Error(`${opts.command} does not accept --port`);
   }
 }
 
@@ -226,15 +258,38 @@ async function main() {
     process.exit(2);
   }
 
-  if (!opts.input) {
+  if (!opts.input && opts.command !== "serve") {
     console.error("Missing input path");
     printHelp();
+    process.exit(2);
+  }
+  if (opts.command === "serve" && opts.input) {
+    console.error(`serve does not take a positional argument (got ${opts.input})`);
     process.exit(2);
   }
 
   const { OpenPptError } = await import("../src/errors.js");
 
   try {
+    if (opts.command === "serve") {
+      const { startWebServer } = await import("../src/server.js");
+      const started = startWebServer({
+        port: opts.port ?? 7357,
+        dataDir: opts.dataDir || undefined,
+      });
+      console.log(`OpenPPT Studio  ${started.url}`);
+      console.log(`projects        ${started.dataDir}`);
+      console.log("Press Ctrl+C to stop.");
+      if (opts.open && process.platform === "darwin") {
+        try {
+          Bun.spawn(["open", started.url]);
+        } catch {
+          // browser open is best-effort
+        }
+      }
+      return;
+    }
+
     if (opts.command === "init") {
       const { initProject } = await import("../src/init.js");
       const result = initProject(opts.input, {

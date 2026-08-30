@@ -14,6 +14,7 @@
   "files": [
     "bin/",
     "src/",
+    "web/",
     "schema/",
     "fixtures/golden/deck.json",
     "fixtures/golden/media/accent.png",
@@ -43,7 +44,8 @@
     "export:layout": "bun bin/openppt.js export fixtures/layout-demo/deck.json -o fixtures/layout-demo/out/layout.pptx --force",
     "export:table": "bun bin/openppt.js export fixtures/table-demo/deck.json -o fixtures/table-demo/out/table.pptx --force",
     "install:skill": "bash scripts/install-skill.sh",
-    "preview:golden": "bun bin/openppt.js preview fixtures/golden/deck.json -o fixtures/golden/out/preview.html --force"
+    "preview:golden": "bun bin/openppt.js preview fixtures/golden/deck.json -o fixtures/golden/out/preview.html --force",
+    "serve": "bun bin/openppt.js serve"
   },
   "repository": {
     "type": "git",

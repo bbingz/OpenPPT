@@ -71,6 +71,7 @@ const EXPECTED_ROOT_PACKAGE_SURFACE = {
   files: [
     "bin/",
     "src/",
+    "web/",
     "schema/",
     "fixtures/golden/deck.json",
     "fixtures/golden/media/accent.png",
@@ -108,6 +109,7 @@ const EXPECTED_ROOT_PACKAGE_SURFACE = {
     "install:skill": "bash scripts/install-skill.sh",
     "preview:golden":
       "bun bin/openppt.js preview fixtures/golden/deck.json -o fixtures/golden/out/preview.html --force",
+    serve: "bun bin/openppt.js serve",
   },
   main: null,
   module: null,

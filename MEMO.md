@@ -2,6 +2,14 @@
 
 ## Changelog Memo
 
+### 2026-08-30
+
+- [新增] `serve` 子命令 → OpenPPT Studio 本地 Web 工作台(Bun.serve,零新依赖,仅绑 127.0.0.1):项目管理(空白/骨架/大纲/导入 PPTX)、deck.json 编辑+草稿暂存、校验、沙箱预览、QA、媒体上传、PPTX 下载。
+- [安全] 项目 id 与媒体名白名单+路径 containment;上传走 RESOURCE_LIMITS 上限与扩展名+magic-byte 双检;预览/媒体响应带严格 CSP 与 nosniff;静态文件走清单不做目录服务。
+- [兼容] Studio 项目即普通 CLI 项目文件夹(默认 ~/.openppt/projects);deck 保存复用原子写且必须先通过 JSON 解析。
+- [验证] 新增 test/server.test.js(13 项);全套 180/180 通过;浏览器端到端冒烟(创建骨架项目→自动校验 4 页→预览渲染→控制台无错误)通过。
+- [登记] production audit 的包表面清单已重签(files+web/、scripts+serve);`startWebServer` 进入公共 API。
+
 ### 2026-08-29
 
 - [安全] 数值量级 / 主题原型链 / 超大 PNG / import 正则 DoS / 页序 / 未类型化错误 / 非 force 导出 TOCTOU 已按第五轮工单 P0 fail-closed 修复。

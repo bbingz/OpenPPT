@@ -36,6 +36,7 @@ export {
   deckHasGroups,
 } from "./layout.js";
 export { renderPreviewHtml, writePreviewHtml } from "./preview.js";
+export { startWebServer } from "./server.js";
 export { OpenPptError, ErrorCodes, SeverityRank } from "./errors.js";
 
 /**
