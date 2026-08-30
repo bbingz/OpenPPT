@@ -2,6 +2,19 @@
 
 ## Unreleased — 2026-08-30
 
+- New `bun run dogfood` battery (`scripts/dogfood.js`): 12 real end-to-end
+  generation scenarios (Chinese pitch from the skeleton, all five chart types
+  with authored category labels, a 52-row rich-cell table, rich text with
+  hyperlink rels integrity, nested stack/row/grid/layer layouts, a 30-section
+  outline, multi-file decks, all five media formats with fit modes, PPTX
+  import round-trip, the Studio HTTP API end to end, YAML authoring, and a
+  64-page stress deck). Every scenario unzips the produced PPTX and asserts
+  artifact hygiene: no `Infinity`/`NaN` attributes, no `rIdundefined`, every
+  slide `r:id` resolves in its rels part, preview escaping, and size/time
+  budgets. CI runs the battery on every matrix cell; `report.json` is written
+  next to the kept artifacts. First run validated the pipeline (all four
+  failures were harness authoring mistakes — schema and docs held up).
+
 - New `serve` command starts **OpenPPT Studio**, a local offline web workbench
   (`Bun.serve`, no new dependencies, binds 127.0.0.1 only): project list plus
   create flows (blank / skeleton / markdown outline / lossy PPTX import),

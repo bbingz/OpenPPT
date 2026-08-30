@@ -56,6 +56,8 @@ jobs:
           bun bin/openppt.js export fixtures/chart-demo/deck.json -o "${{ runner.temp }}/chart.pptx" --force
           bun bin/openppt.js export fixtures/multi-file/deck.json -o "${{ runner.temp }}/multi.pptx" --force
           bun -e "import { statSync } from 'node:fs'; for (const file of process.argv.slice(1)) { if (statSync(file).size < 1) throw new Error('empty export: ' + file); }" "${{ runner.temp }}/golden.pptx" "${{ runner.temp }}/chart.pptx" "${{ runner.temp }}/multi.pptx"
+      - name: Dogfood battery (12 real generation scenarios)
+        run: bun scripts/dogfood.js --out "${{ runner.temp }}/dogfood"
 
   production-audit:
     name: production dependency audit

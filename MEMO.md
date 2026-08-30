@@ -4,6 +4,8 @@
 
 ### 2026-08-30
 
+- [新增] `bun run dogfood` 真实生成陪跑批次(12 场景/115 断言):中文骨架成稿、五图表+类目标签、富单元格长表、富文本+链接关系完整性、嵌套布局、30 节大纲、多文件、五媒体格式、导入回环、Studio HTTP 全链路、YAML、64 页压力;产物级卫生断言(无 Infinity/NaN/rIdundefined、r:id 全解析、预览转义、耗时预算);已接入 CI 全矩阵。
+- [验证] 首轮 4 个失败均为陪跑脚本自身的 IR 用法错误(schema 与文档经受住真实作者路径检验);修正后 12/12,全套 180/180。
 - [新增] `serve` 子命令 → OpenPPT Studio 本地 Web 工作台(Bun.serve,零新依赖,仅绑 127.0.0.1):项目管理(空白/骨架/大纲/导入 PPTX)、deck.json 编辑+草稿暂存、校验、沙箱预览、QA、媒体上传、PPTX 下载。
 - [安全] 项目 id 与媒体名白名单+路径 containment;上传走 RESOURCE_LIMITS 上限与扩展名+magic-byte 双检;预览/媒体响应带严格 CSP 与 nosniff;静态文件走清单不做目录服务。
 - [兼容] Studio 项目即普通 CLI 项目文件夹(默认 ~/.openppt/projects);deck 保存复用原子写且必须先通过 JSON 解析。

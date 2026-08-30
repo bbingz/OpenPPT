@@ -241,6 +241,16 @@ bun test ./test/
 The `./` prefix matters: `bun test` positional args are path filters, so a bare
 `test/` (or no argument) also collects any gitignored `upstream/test/**`.
 
+```bash
+bun run dogfood   # 12 real end-to-end generation scenarios (also run in CI)
+```
+
+The dogfood battery authors realistic decks (pitch, charts, tables, rich text,
+nested layouts, long outlines, multi-file, media formats, YAML, PPTX import
+round-trip, Studio HTTP API, and a 64-page stress deck), then unzips and
+inspects the actual artifacts. Artifacts land in a temp directory printed at
+the end, with a `report.json` beside them.
+
 ## License
 
 Apache-2.0 — Copyright 2026 OpenPPT contributors. Third-party notices in `NOTICE`.
