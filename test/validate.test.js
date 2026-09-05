@@ -657,4 +657,210 @@ describe("validateDeck (shipped)", () => {
     });
     assert.equal(ok, true);
   });
+
+  function textDeck(fontFamily, runFamily) {
+    return {
+      version: "openppt-1",
+      size: [960, 540],
+      pages: [
+        {
+          id: "p1",
+          elements: [
+            {
+              id: "t1",
+              type: "text",
+              bounds: [0, 0, 200, 40],
+              text: runFamily
+                ? [{ text: "Hi", fontFamily: runFamily }]
+                : "Hi",
+              ...(fontFamily ? { fontFamily } : {}),
+            },
+          ],
+        },
+      ],
+    };
+  }
+
+  it("accepts ordinary Latin and CJK fontFamily names", () => {
+    for (const name of [
+      "Arial",
+      "Times New Roman",
+      "PingFang SC",
+      "微软雅黑",
+      "Noto Sans CJK SC",
+      "Rock'n'Roll One",
+    ]) {
+      const result = validateDeck(textDeck(name), { checkMedia: false });
+      assert.equal(result.ok, true, name);
+    }
+    const run = validateDeck(textDeck(undefined, "Hiragino Sans GB"), {
+      checkMedia: false,
+    });
+    assert.equal(run.ok, true);
+  });
+
+  it("rejects multi-series pie and doughnut charts", () => {
+    for (const chartType of ["pie", "doughnut"]) {
+      assert.throws(
+        () =>
+          validateDeck(
+            {
+              version: "openppt-1",
+              size: [960, 540],
+              pages: [
+                {
+                  id: "p1",
+                  elements: [
+                    {
+                      id: "ch",
+                      type: "chart",
+                      bounds: [0, 0, 400, 300],
+                      chartType,
+                      series: [
+                        { name: "A", values: [1, 2], labels: ["x", "y"] },
+                        { name: "B", values: [3, 4], labels: ["x", "y"] },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+            { checkMedia: false },
+          ),
+        (err) => {
+          assert.ok(err instanceof OpenPptError);
+          assert.equal(err.code, ErrorCodes.SCHEMA);
+          assert.match(err.message, /multi-series/i);
+          return true;
+        },
+        chartType,
+      );
+    }
+  });
+
+  it("rejects mixed explicit and omitted chart categories", () => {
+    assert.throws(
+      () =>
+        validateDeck(
+          {
+            version: "openppt-1",
+            size: [960, 540],
+            pages: [
+              {
+                id: "p1",
+                elements: [
+                  {
+                    id: "ch",
+                    type: "chart",
+                    bounds: [0, 0, 400, 300],
+                    chartType: "bar",
+                    series: [
+                      { name: "A", values: [1, 2], labels: ["Q1", "Q2"] },
+                      { name: "B", values: [3, 4] },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+          { checkMedia: false },
+        ),
+      (err) => {
+        assert.ok(err instanceof OpenPptError);
+        assert.equal(err.code, ErrorCodes.SCHEMA);
+        assert.match(err.message, /categor/i);
+        return true;
+      },
+    );
+  });
+
+  it("accepts omitted chart labels that match the default 1-based categories", () => {
+    const result = validateDeck(
+      {
+        version: "openppt-1",
+        size: [960, 540],
+        pages: [
+          {
+            id: "p1",
+            elements: [
+              {
+                id: "ch",
+                type: "chart",
+                bounds: [0, 0, 400, 300],
+                chartType: "bar",
+                series: [
+                  { name: "A", values: [1, 2] },
+                  { name: "B", labels: ["1", "2"], values: [3, 4] },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+      { checkMedia: false },
+    );
+    assert.equal(result.ok, true);
+  });
+
+  it("rejects chart series with mismatched categories", () => {
+    assert.throws(
+      () =>
+        validateDeck(
+          {
+            version: "openppt-1",
+            size: [960, 540],
+            pages: [
+              {
+                id: "p1",
+                elements: [
+                  {
+                    id: "ch",
+                    type: "chart",
+                    bounds: [0, 0, 400, 300],
+                    chartType: "bar",
+                    series: [
+                      { name: "A", values: [1, 2], labels: ["x", "y"] },
+                      { name: "B", values: [3, 4], labels: ["y", "z"] },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+          { checkMedia: false },
+        ),
+      (err) => {
+        assert.ok(err instanceof OpenPptError);
+        assert.equal(err.code, ErrorCodes.SCHEMA);
+        assert.match(err.message, /categor/i);
+        return true;
+      },
+    );
+  });
+
+  it("rejects unsafe fontFamily values with SCHEMA_INVALID", () => {
+    for (const name of [
+      `Arial"/><a:latin typeface="Wingdings`,
+      "Arial;color:red",
+      "/usr/share/fonts/Arial.ttf",
+      "Arial\nComic Sans",
+      "<script>",
+      "Arial\uFFFF",
+      "Arial\uFFFE",
+      "Arial\uD800",
+      "Arial\u0001",
+      "Arial\u007F",
+    ]) {
+      assert.throws(
+        () => validateDeck(textDeck(name), { checkMedia: false }),
+        (err) => {
+          assert.ok(err instanceof OpenPptError);
+          assert.equal(err.code, ErrorCodes.SCHEMA);
+          assert.match(err.message, /fontFamily/i);
+          return true;
+        },
+        JSON.stringify(name),
+      );
+    }
+  });
 });

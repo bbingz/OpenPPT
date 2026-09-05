@@ -23,6 +23,8 @@ export const RESOURCE_LIMITS = Object.freeze({
   tableColumnsPerRow: 64,
   tableCellsPerElement: 8192,
   tableCellsPerDeck: 32768,
+  namedTextStyles: 128,
+  paragraphsPerElement: 256,
   pptxArchiveBytes: 192 * MiB,
   pptxEntries: 4096,
   pptxEntryUncompressedBytes: 32 * MiB,
@@ -87,6 +89,29 @@ export function assertDeckResourceLimits(deck) {
       addString(name, `theme.colors[${colorIndex}].name`);
       addString(deck.theme.colors[name], `theme.colors[${colorIndex}].value`);
       colorIndex += 1;
+    }
+  }
+  if (deck.theme?.fonts && typeof deck.theme.fonts === "object") {
+    addString(deck.theme.fonts.latin, "theme.fonts.latin");
+    addString(deck.theme.fonts.ea, "theme.fonts.ea");
+  }
+  if (deck.theme?.textStyles && typeof deck.theme.textStyles === "object") {
+    let styleCount = 0;
+    for (const name in deck.theme.textStyles) {
+      if (!Object.prototype.hasOwnProperty.call(deck.theme.textStyles, name)) continue;
+      styleCount += 1;
+      assertResourceLimit(
+        styleCount,
+        RESOURCE_LIMITS.namedTextStyles,
+        "namedTextStyles",
+        "theme.textStyles",
+      );
+      addString(name, `theme.textStyles.${name}.name`);
+      const style = deck.theme.textStyles[name];
+      if (style && typeof style === "object" && !Array.isArray(style)) {
+        addString(style.fontFamily, `theme.textStyles.${name}.fontFamily`);
+        addString(style.color, `theme.textStyles.${name}.color`);
+      }
     }
   }
 
@@ -183,9 +208,77 @@ export function assertDeckResourceLimits(deck) {
       const elementContext = `${context} (id=${element.id || "?"})`;
       if (element.type === "text") {
         addString(element.fontFamily, `${elementContext}.fontFamily`);
+        addString(element.style, `${elementContext}.style`);
         addString(element.href, `${elementContext}.href`);
         addString(element.color, `${elementContext}.color`);
-        if (Array.isArray(element.text)) {
+        if (Array.isArray(element.paragraphs)) {
+          assertResourceLimit(
+            element.paragraphs.length,
+            RESOURCE_LIMITS.paragraphsPerElement,
+            "paragraphsPerElement",
+            `${elementContext}.paragraphs`,
+          );
+          let authoredRuns = 0;
+          let fragments = 0;
+          for (let pi = 0; pi < element.paragraphs.length; pi += 1) {
+            const para = element.paragraphs[pi];
+            const pctx = `${elementContext}.paragraphs[${pi}]`;
+            if (!para || typeof para !== "object") continue;
+            addString(para.fontFamily, `${pctx}.fontFamily`);
+            addString(para.color, `${pctx}.color`);
+            if (Array.isArray(para.text)) {
+              assertResourceLimit(
+                authoredRuns + para.text.length,
+                RESOURCE_LIMITS.richTextRunsPerElement,
+                "richTextRunsPerElement",
+                `${pctx}.text`,
+              );
+              authoredRuns += para.text.length;
+              for (let ri = 0; ri < para.text.length; ri += 1) {
+                const run = para.text[ri];
+                if (!run || typeof run !== "object") continue;
+                addString(run.text, `${pctx}.text[${ri}].text`);
+                addString(run.fontFamily, `${pctx}.text[${ri}].fontFamily`);
+                addString(run.color, `${pctx}.text[${ri}].color`);
+                fragments += String(run.text ?? "").split(/\r\n|\r|\n/).length;
+                assertResourceLimit(
+                  fragments,
+                  RESOURCE_LIMITS.richTextRunsPerElement,
+                  "richTextRunsPerElement",
+                  `${pctx}.text fragments`,
+                );
+              }
+            } else {
+              authoredRuns += 1;
+              assertResourceLimit(
+                authoredRuns,
+                RESOURCE_LIMITS.richTextRunsPerElement,
+                "richTextRunsPerElement",
+                `${pctx}.text`,
+              );
+              addString(para.text, `${pctx}.text`);
+              fragments += String(para.text ?? "").split(/\r\n|\r|\n/).length;
+              assertResourceLimit(
+                fragments,
+                RESOURCE_LIMITS.richTextRunsPerElement,
+                "richTextRunsPerElement",
+                `${pctx}.text fragments`,
+              );
+            }
+          }
+          assertResourceLimit(
+            authoredRuns,
+            RESOURCE_LIMITS.richTextRunsPerElement,
+            "richTextRunsPerElement",
+            `${elementContext}.paragraphs`,
+          );
+          assertResourceLimit(
+            fragments,
+            RESOURCE_LIMITS.richTextRunsPerElement,
+            "richTextRunsPerElement",
+            `${elementContext}.paragraphs fragments`,
+          );
+        } else if (Array.isArray(element.text)) {
           assertResourceLimit(
             element.text.length,
             RESOURCE_LIMITS.richTextRunsPerElement,

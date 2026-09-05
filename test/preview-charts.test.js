@@ -27,7 +27,7 @@ describe("preview mini-charts", () => {
         title: "营收 <b>粗体注入</b>",
         series: [
           { name: "华东<script>", labels: ["Q1", "Q2", "Q3", "Q4"], values: [10, 20, 30, 40] },
-          { name: "华南", values: [5, 15, 25, 35] },
+          { name: "华南", labels: ["Q1", "Q2", "Q3", "Q4"], values: [5, 15, 25, 35] },
         ],
       }),
       process.cwd(),
@@ -99,5 +99,64 @@ describe("preview mini-charts", () => {
     );
     expect(html).toContain("no data");
     expect(html).not.toContain("NaN");
+  });
+
+  test("bar series fills match compile palette and skip surface", () => {
+    const html = renderPreviewHtml(
+      {
+        version: "openppt-1",
+        title: "chart-demo preview",
+        size: [960, 540],
+        theme: {
+          colors: {
+            primary: "#2563EB",
+            text: "#111827",
+            background: "#FFFFFF",
+            surface: "#F8FAFC",
+          },
+        },
+        pages: [
+          {
+            id: "p1",
+            background: { type: "solid", color: "$surface" },
+            elements: [
+              {
+                id: "c1",
+                type: "chart",
+                chartType: "bar",
+                bounds: [48, 80, 864, 400],
+                title: "Sales",
+                series: [
+                  { name: "Revenue", labels: ["Q1", "Q2", "Q3", "Q4"], values: [12, 18, 15, 22] },
+                  { name: "Cost", labels: ["Q1", "Q2", "Q3", "Q4"], values: [8, 9, 10, 11] },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+      process.cwd(),
+    );
+    const fills = [...html.matchAll(/<rect [^>]*fill="(#[0-9A-Fa-f]{6})"/g)].map((m) =>
+      m[1].toUpperCase(),
+    );
+    const unique = [...new Set(fills)];
+    expect(unique).toEqual(["#2563EB", "#7C3AED"]);
+    expect(html).not.toContain('fill="#F8FAFC"');
+    expect(html).not.toContain('fill="#FFFFFF"');
+  });
+
+  test("pie slices use the same primary-then-fallback colors", () => {
+    const html = renderPreviewHtml(
+      chartDeck({
+        type: "chart",
+        chartType: "pie",
+        series: [{ name: "Share", labels: ["A", "B"], values: [40, 60] }],
+      }),
+      process.cwd(),
+    );
+    expect(html).toContain('fill="#2563EB"');
+    expect(html).toContain('fill="#7C3AED"');
+    expect(html).not.toContain('fill="#F8FAFC"');
   });
 });

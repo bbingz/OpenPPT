@@ -540,10 +540,15 @@ scenario("studio-api", async (s) => {
     s.eq("import via HTTP → 4 pages", imported.pageCount, 4);
 
     const id = blank.project.id;
-    const detail = await (await fetch(`${base}/api/projects/${id}`)).json();
+    const detailRes = await fetch(`${base}/api/projects/${id}`);
+    const detail = await detailRes.json();
     const deck = JSON.parse(detail.source);
     deck.title = "API Blank · edited";
-    const put = await fetch(`${base}/api/projects/${id}/deck`, { method: "PUT", body: JSON.stringify(deck, null, 2) });
+    const put = await fetch(`${base}/api/projects/${id}/deck`, {
+      method: "PUT",
+      headers: { "If-Match": detailRes.headers.get("etag") },
+      body: JSON.stringify(deck, null, 2),
+    });
     s.eq("save edited deck", put.status, 200);
     const check = await (await fetch(`${base}/api/projects/${id}/validate`, { method: "POST" })).json();
     s.check("edited deck validates", check.ok, JSON.stringify(check.error || {}));

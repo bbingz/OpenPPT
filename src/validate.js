@@ -17,16 +17,16 @@ import {
   assertResourceLimit,
   RESOURCE_LIMITS,
 } from "./resource-limits.js";
-
-/** Allowed image extensions for local media (lowercase, with dot). */
-const MEDIA_EXTENSIONS = new Set([
-  ".png",
-  ".jpg",
-  ".jpeg",
-  ".gif",
-  ".webp",
-  ".svg",
-]);
+import { MEDIA_EXTENSIONS } from "./internal/media-types.js";
+import { resolveDeckTextStyles } from "./internal/text-styles.js";
+import {
+  MAX_BULLET_MARL_EMU,
+  MAX_PARAGRAPH_SPACE_PT,
+  bulletMarginEmu,
+  countAuthoredParagraphRuns,
+  countParagraphFragments,
+  listMarkers,
+} from "./internal/paragraphs.js";
 
 /** Practical OOXML/pptxgenjs ceilings. Schema mirrors these maxima. */
 const FONT_SIZE_MAX_PT = 4000;
@@ -34,6 +34,7 @@ const LINE_WIDTH_MAX_PT = 1584;
 const IMAGE_MAX_EDGE_PX = 65535;
 const IMAGE_MAX_ASPECT = 10000;
 const HEX_COLOR_RE = /^#([0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})$/;
+const FONT_FAMILY_PUNCT = new Set([" ", "'", "-", "_", ".", "(", ")"]);
 
 const MEDIA_OPEN_FLAGS =
   constants.O_RDONLY |
@@ -380,6 +381,62 @@ export function resolveColor(value, colors, context) {
   return hex;
 }
 
+function isXml10Char(cp) {
+  return (
+    (cp >= 0x20 && cp <= 0xd7ff) ||
+    (cp >= 0xe000 && cp <= 0xfffd) ||
+    (cp >= 0x10000 && cp <= 0x10ffff)
+  );
+}
+
+function isXmlNoncharacter(cp) {
+  if (cp >= 0xfdd0 && cp <= 0xfdef) return true;
+  return (cp & 0xffff) === 0xfffe || (cp & 0xffff) === 0xffff;
+}
+
+function isSafeFontFamilyChar(ch) {
+  const cp = ch.codePointAt(0);
+  if (cp <= 0x1f || (cp >= 0x7f && cp <= 0x9f)) return false;
+  if (!isXml10Char(cp) || isXmlNoncharacter(cp)) return false;
+  if (FONT_FAMILY_PUNCT.has(ch)) return true;
+  return /\p{L}|\p{N}|\p{M}/u.test(ch);
+}
+
+/**
+ * Categories actually sent to the chart cache/workbook.
+ * Omitted labels become 1-based index strings ("1","2",...).
+ * @param {{ labels?: string[], values: number[] }} ser
+ * @returns {string[]}
+ */
+export function effectiveChartLabels(ser) {
+  if (Array.isArray(ser.labels)) return ser.labels.map((label) => String(label));
+  return ser.values.map((_, index) => String(index + 1));
+}
+
+function chartLabelsEqual(a, b) {
+  return a.length === b.length && a.every((label, index) => label === b[index]);
+}
+
+function assertFontFamily(value, ctx, extra = {}) {
+  if (value === undefined) return;
+  if (typeof value !== "string" || value.length < 1) {
+    throw new OpenPptError(
+      ErrorCodes.SCHEMA,
+      `Unsafe fontFamily at ${ctx}: ${JSON.stringify(value)}`,
+      extra,
+    );
+  }
+  for (const ch of value) {
+    if (!isSafeFontFamilyChar(ch)) {
+      throw new OpenPptError(
+        ErrorCodes.SCHEMA,
+        `Unsafe fontFamily at ${ctx}: ${JSON.stringify(value)}`,
+        extra,
+      );
+    }
+  }
+}
+
 function assertFontSize(value, ctx, extra = {}) {
   if (value === undefined) return;
   if (!Number.isFinite(value) || value <= 0 || value > FONT_SIZE_MAX_PT) {
@@ -389,6 +446,113 @@ function assertFontSize(value, ctx, extra = {}) {
       extra,
     );
   }
+}
+
+function assertLineHeight(value, ctx, extra = {}) {
+  if (value === undefined) return;
+  if (!Number.isFinite(value) || value < 0.5 || value > 9.99) {
+    throw new OpenPptError(
+      ErrorCodes.SCHEMA,
+      `lineHeight must be a finite multiplier in [0.5, 9.99] at ${ctx}: ${value}`,
+      extra,
+    );
+  }
+}
+
+function assertSpacePt(value, label, ctx, extra = {}) {
+  if (value === undefined) return;
+  if (!Number.isFinite(value) || value < 0 || value > MAX_PARAGRAPH_SPACE_PT) {
+    throw new OpenPptError(
+      ErrorCodes.SCHEMA,
+      `${label} must be a finite number in [0, ${MAX_PARAGRAPH_SPACE_PT}] at ${ctx}: ${value}`,
+      extra,
+    );
+  }
+}
+
+function assertCharSpacing(value, ctx, extra = {}) {
+  if (value === undefined) return;
+  if (!Number.isFinite(value) || value < -100 || value > 100) {
+    throw new OpenPptError(
+      ErrorCodes.SCHEMA,
+      `charSpacing must be a finite number in [-100, 100] at ${ctx}: ${value}`,
+      extra,
+    );
+  }
+}
+
+function assertBullet(bullet, ctx, extra = {}) {
+  if (bullet === undefined || typeof bullet === "boolean") return;
+  if (!bullet || typeof bullet !== "object" || Array.isArray(bullet)) {
+    throw new OpenPptError(
+      ErrorCodes.SCHEMA,
+      `Invalid bullet at ${ctx}`,
+      extra,
+    );
+  }
+  if (bullet.type !== "bullet" && bullet.type !== "number") {
+    throw new OpenPptError(
+      ErrorCodes.SCHEMA,
+      `Invalid bullet type at ${ctx}`,
+      extra,
+    );
+  }
+  if (bullet.start !== undefined) {
+    if (bullet.type !== "number") {
+      throw new OpenPptError(
+        ErrorCodes.SCHEMA,
+        `bullet.start is only allowed for numbered lists at ${ctx}`,
+        extra,
+      );
+    }
+    if (
+      !Number.isInteger(bullet.start) ||
+      bullet.start < 1 ||
+      bullet.start > 32767
+    ) {
+      throw new OpenPptError(
+        ErrorCodes.SCHEMA,
+        `bullet.start must be an integer in [1, 32767] at ${ctx}: ${bullet.start}`,
+        extra,
+      );
+    }
+  }
+  if (bullet.level !== undefined) {
+    if (!Number.isInteger(bullet.level) || bullet.level < 0 || bullet.level > 8) {
+      throw new OpenPptError(
+        ErrorCodes.SCHEMA,
+        `bullet.level must be an integer in [0, 8] at ${ctx}: ${bullet.level}`,
+        extra,
+      );
+    }
+  }
+  if (bullet.indent !== undefined) {
+    if (!Number.isFinite(bullet.indent) || bullet.indent < 0 || bullet.indent > 1584) {
+      throw new OpenPptError(
+        ErrorCodes.SCHEMA,
+        `bullet.indent must be a finite number in [0, 1584] at ${ctx}: ${bullet.indent}`,
+        extra,
+      );
+    }
+  }
+  const indentPt =
+    bullet.indent === undefined ? 18 : bullet.indent;
+  const level = bullet.level === undefined ? 0 : bullet.level;
+  const marL = bulletMarginEmu(indentPt, level);
+  if (marL > MAX_BULLET_MARL_EMU) {
+    throw new OpenPptError(
+      ErrorCodes.SCHEMA,
+      `Derived bullet marL ${marL} EMU exceeds ${MAX_BULLET_MARL_EMU} at ${ctx}`,
+      { ...extra, marL, indent: indentPt, level, maximum: MAX_BULLET_MARL_EMU },
+    );
+  }
+}
+
+function assertTypography(target, ctx, extra = {}) {
+  assertLineHeight(target.lineHeight, ctx, extra);
+  assertSpacePt(target.spaceBefore, "spaceBefore", ctx, extra);
+  assertSpacePt(target.spaceAfter, "spaceAfter", ctx, extra);
+  assertCharSpacing(target.charSpacing, ctx, extra);
 }
 
 function assertLineWidth(value, label, ctx, extra = {}) {
@@ -428,6 +592,39 @@ function assertNaturalImageSize(naturalSize, ctx, details) {
       `Image aspect ratio out of range at ${ctx}: ${width}×${height}`,
       details,
     );
+  }
+}
+
+function validateRawTextStyles(deck, colors) {
+  const fonts = deck?.theme?.fonts;
+  if (fonts && typeof fonts === "object" && !Array.isArray(fonts)) {
+    if (Object.hasOwn(fonts, "latin")) {
+      assertFontFamily(fonts.latin, "theme.fonts.latin", { fontFamily: fonts.latin });
+    }
+    if (Object.hasOwn(fonts, "ea")) {
+      assertFontFamily(fonts.ea, "theme.fonts.ea", { fontFamily: fonts.ea });
+    }
+  }
+  const styles = deck?.theme?.textStyles;
+  if (!styles || typeof styles !== "object" || Array.isArray(styles)) return;
+  for (const name of Object.keys(styles)) {
+    if (!Object.hasOwn(styles, name)) continue;
+    const style = styles[name];
+    const ctx = `theme.textStyles.${name}`;
+    if (!style || typeof style !== "object" || Array.isArray(style)) {
+      throw new OpenPptError(
+        ErrorCodes.SCHEMA,
+        `Invalid text style at ${ctx}`,
+        { name },
+      );
+    }
+    assertFontSize(style.fontSize, ctx, { fontSize: style.fontSize, style: name });
+    assertFontFamily(style.fontFamily, ctx, {
+      fontFamily: style.fontFamily,
+      style: name,
+    });
+    assertTypography(style, ctx, { style: name });
+    if (style.color) resolveColor(style.color, colors, `${ctx}.color`);
   }
 }
 
@@ -587,6 +784,9 @@ function validateDeckInner(deck, options = {}) {
   for (const key of Object.keys(themeColors)) {
     colors[key] = themeColors[key];
   }
+  validateRawTextStyles(deck, colors);
+  resolveDeckTextStyles(deck);
+  assertDeckResourceLimits(deck);
   /** @type {Set<string>} */
   const pageIds = new Set();
   /** @type {Set<string>} */
@@ -652,16 +852,116 @@ function validateDeckInner(deck, options = {}) {
       }
 
       if (el.type === "text") {
+        const hasText = Object.hasOwn(el, "text");
+        const hasParagraphs = Object.hasOwn(el, "paragraphs");
+        if (hasText === hasParagraphs) {
+          throw new OpenPptError(
+            ErrorCodes.SCHEMA,
+            `Text element must have exactly one of text or paragraphs at ${ectx}`,
+            { pageId: page.id, elementId: el.id },
+          );
+        }
         assertFontSize(el.fontSize, ectx, {
           pageId: page.id,
           elementId: el.id,
           fontSize: el.fontSize,
         });
+        assertFontFamily(el.fontFamily, ectx, {
+          pageId: page.id,
+          elementId: el.id,
+          fontFamily: el.fontFamily,
+        });
+        assertTypography(el, ectx, { pageId: page.id, elementId: el.id });
         if (el.color) resolveColor(el.color, colors, `${ectx}.color`);
-        if (Array.isArray(el.text)) {
+        if (hasParagraphs) {
+          if (!Array.isArray(el.paragraphs) || el.paragraphs.length < 1) {
+            throw new OpenPptError(
+              ErrorCodes.SCHEMA,
+              `paragraphs must be a non-empty array at ${ectx}`,
+              { pageId: page.id, elementId: el.id },
+            );
+          }
+          assertResourceLimit(
+            el.paragraphs.length,
+            RESOURCE_LIMITS.paragraphsPerElement,
+            "paragraphsPerElement",
+            `${ectx}.paragraphs`,
+          );
+          assertResourceLimit(
+            countAuthoredParagraphRuns(el.paragraphs),
+            RESOURCE_LIMITS.richTextRunsPerElement,
+            "richTextRunsPerElement",
+            `${ectx}.paragraphs`,
+          );
+          assertResourceLimit(
+            countParagraphFragments(el.paragraphs),
+            RESOURCE_LIMITS.richTextRunsPerElement,
+            "richTextRunsPerElement",
+            `${ectx}.paragraphs fragments`,
+          );
+          for (let pi = 0; pi < el.paragraphs.length; pi += 1) {
+            const para = el.paragraphs[pi];
+            const pctx = `${ectx}.paragraphs[${pi}]`;
+            assertFontSize(para.fontSize, pctx, {
+              pageId: page.id,
+              elementId: el.id,
+            });
+            assertFontFamily(para.fontFamily, pctx, {
+              pageId: page.id,
+              elementId: el.id,
+              fontFamily: para.fontFamily,
+            });
+            assertTypography(para, pctx, { pageId: page.id, elementId: el.id });
+            assertBullet(para.bullet, `${pctx}.bullet`, {
+              pageId: page.id,
+              elementId: el.id,
+            });
+            if (para.color) resolveColor(para.color, colors, `${pctx}.color`);
+            if (typeof para.text === "string") {
+              // plain paragraph text
+            } else if (Array.isArray(para.text)) {
+              for (let ri = 0; ri < para.text.length; ri += 1) {
+                const run = para.text[ri];
+                const rctx = `${pctx}.text[${ri}]`;
+                assertFontSize(run.fontSize, rctx, {
+                  pageId: page.id,
+                  elementId: el.id,
+                });
+                assertFontFamily(run.fontFamily, rctx, {
+                  pageId: page.id,
+                  elementId: el.id,
+                  fontFamily: run.fontFamily,
+                });
+                assertCharSpacing(run.charSpacing, rctx, {
+                  pageId: page.id,
+                  elementId: el.id,
+                });
+                if (run.color) resolveColor(run.color, colors, `${rctx}.color`);
+              }
+            } else {
+              throw new OpenPptError(
+                ErrorCodes.SCHEMA,
+                `paragraph text must be a string or run array at ${pctx}`,
+                { pageId: page.id, elementId: el.id },
+              );
+            }
+          }
+          listMarkers(el.paragraphs, { context: `${ectx}.paragraphs` });
+        } else if (Array.isArray(el.text)) {
           for (let ri = 0; ri < el.text.length; ri += 1) {
             const run = el.text[ri];
             assertFontSize(run.fontSize, `${ectx}.text[${ri}]`, {
+              pageId: page.id,
+              elementId: el.id,
+              runIndex: ri,
+            });
+            assertFontFamily(run.fontFamily, `${ectx}.text[${ri}]`, {
+              pageId: page.id,
+              elementId: el.id,
+              runIndex: ri,
+              fontFamily: run.fontFamily,
+            });
+            assertCharSpacing(run.charSpacing, `${ectx}.text[${ri}]`, {
               pageId: page.id,
               elementId: el.id,
               runIndex: ri,
@@ -802,6 +1102,33 @@ function validateDeckInner(deck, options = {}) {
                 { pageId: page.id, elementId: el.id },
               );
             }
+          }
+        }
+        const isPieLike = el.chartType === "pie" || el.chartType === "doughnut";
+        if (isPieLike && el.series.length > 1) {
+          throw new OpenPptError(
+            ErrorCodes.SCHEMA,
+            `Unsupported multi-series ${el.chartType} at ${ectx}`,
+            { pageId: page.id, elementId: el.id, chartType: el.chartType },
+          );
+        }
+        const sharedLen = el.series[0].values.length;
+        const sharedLabels = effectiveChartLabels(el.series[0]);
+        for (let si = 1; si < el.series.length; si += 1) {
+          const ser = el.series[si];
+          if (ser.values.length !== sharedLen) {
+            throw new OpenPptError(
+              ErrorCodes.SCHEMA,
+              `Chart series values length must match at ${ectx}.series[${si}]`,
+              { pageId: page.id, elementId: el.id },
+            );
+          }
+          if (!chartLabelsEqual(sharedLabels, effectiveChartLabels(ser))) {
+            throw new OpenPptError(
+              ErrorCodes.SCHEMA,
+              `Chart series categories must match at ${ectx}.series[${si}]`,
+              { pageId: page.id, elementId: el.id },
+            );
           }
         }
       } else if (el.type === "table") {

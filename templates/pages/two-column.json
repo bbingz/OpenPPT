@@ -1,0 +1,36 @@
+{
+  "id": "two-column",
+  "background": { "type": "solid", "color": "$background" },
+  "elements": [
+    {
+      "id": "title",
+      "type": "text",
+      "bounds": [48, 36, 864, 56],
+      "text": "{{TITLE}}",
+      "style": "$title"
+    },
+    {
+      "id": "row",
+      "type": "group",
+      "layout": "row",
+      "bounds": [48, 108, 864, 396],
+      "gap": 24,
+      "children": [
+        {
+          "id": "col-a",
+          "type": "text",
+          "flex": 1,
+          "text": "{{BODY_A}}",
+          "style": "$body"
+        },
+        {
+          "id": "col-b",
+          "type": "text",
+          "flex": 1,
+          "text": "{{BODY_B}}",
+          "style": "$body"
+        }
+      ]
+    }
+  ]
+}

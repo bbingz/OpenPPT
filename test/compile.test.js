@@ -8,6 +8,7 @@ import { loadDeck } from "../src/load.js";
 import { compileToPptx, compileToBuffer } from "../src/compile.js";
 import { exportDeckFile } from "../src/index.js";
 import { OpenPptError, ErrorCodes } from "../src/errors.js";
+import JSZip from "jszip";
 import { openPptx, readPptxEntry } from "./helpers/pptx.js";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -489,5 +490,251 @@ describe("compileToPptx (shipped)", () => {
     const pptx = await openPptx(join(outDir, "svg-cover.pptx"));
     const xml = await readPptxEntry(pptx, "ppt/slides/slide1.xml");
     assert.match(xml, /a:srcRect/);
+  });
+
+  it("does not write absolute filesystem paths into image descr", async () => {
+    const { deck, projectRoot, sourcePath } = loadDeck(
+      join(root, "fixtures/golden/deck.json"),
+    );
+    const out = join(outDir, "image-descr.pptx");
+    await compileToPptx(deck, out, { projectRoot, force: true, sourcePath });
+    const fileXml = await readPptxEntry(await openPptx(out), "ppt/slides/slide1.xml");
+    const buf = await compileToBuffer(deck, { projectRoot });
+    const zip = await JSZip.loadAsync(buf);
+    const bufXml = await zip.file("ppt/slides/slide1.xml").async("string");
+    for (const xml of [fileXml, bufXml]) {
+      assert.doesNotMatch(xml, /descr="\//);
+      assert.doesNotMatch(xml, /descr="[A-Za-z]:[\\/]/);
+      assert.match(xml, /descr="media\/[^"]+"/);
+    }
+  });
+
+  function cnvPrIds(xml) {
+    return [...xml.matchAll(/<p:cNvPr\b[^>]*\bid="(\d+)"/g)].map((m) => m[1]);
+  }
+
+  function paragraphPropertyIssues(xml) {
+    const issues = [];
+    const paraRe = /<a:p(?:\s[^>]*)?>[\s\S]*?<\/a:p>/g;
+    let match;
+    while ((match = paraRe.exec(xml))) {
+      const block = match[0];
+      const inner = block.replace(/^<a:p(?:\s[^>]*)?>/, "").replace(/<\/a:p>$/, "");
+      const props = [...inner.matchAll(/<a:pPr\b/g)];
+      const firstTag = inner.match(/<a:[a-zA-Z]+/);
+      if (props.length > 1) issues.push("multiple-pPr");
+      if (props.length >= 1 && firstTag && firstTag[0] !== "<a:pPr") {
+        issues.push("pPr-not-leading");
+      }
+    }
+    return issues;
+  }
+
+  it("assigns unique cNvPr ids on a slide that mixes text and a table", async () => {
+    const deck = {
+      version: "openppt-1",
+      size: [960, 540],
+      pages: [
+        {
+          id: "p1",
+          elements: [
+            {
+              id: "t",
+              type: "text",
+              bounds: [20, 20, 400, 40],
+              text: "Title",
+            },
+            {
+              id: "tbl",
+              type: "table",
+              bounds: [20, 80, 400, 120],
+              rows: [["A", "B"], ["C", "D"]],
+            },
+          ],
+        },
+      ],
+    };
+    const out = join(outDir, "unique-ids.pptx");
+    await compileToPptx(deck, out, { projectRoot: outDir, force: true });
+    const fileXml = await readPptxEntry(await openPptx(out), "ppt/slides/slide1.xml");
+    const buf = await compileToBuffer(deck, { projectRoot: outDir });
+    const bufXml = await (await JSZip.loadAsync(buf))
+      .file("ppt/slides/slide1.xml")
+      .async("string");
+    for (const xml of [fileXml, bufXml]) {
+      const ids = cnvPrIds(xml);
+      assert.ok(ids.length >= 3);
+      assert.equal(new Set(ids).size, ids.length, `duplicate ids: ${ids.join(",")}`);
+    }
+  });
+
+  it("emits at most one leading pPr per text paragraph", async () => {
+    const deck = {
+      version: "openppt-1",
+      size: [960, 540],
+      pages: [
+        {
+          id: "p1",
+          elements: [
+            {
+              id: "mixed",
+              type: "text",
+              bounds: [20, 20, 500, 80],
+              align: "center",
+              text: [
+                { text: "Hello", bold: true },
+                { text: "World", bold: false, color: "#DC2626" },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    const out = join(outDir, "one-ppr.pptx");
+    await compileToPptx(deck, out, { projectRoot: outDir, force: true });
+    const fileXml = await readPptxEntry(await openPptx(out), "ppt/slides/slide1.xml");
+    const bufXml = await (await JSZip.loadAsync(
+      await compileToBuffer(deck, { projectRoot: outDir }),
+    ))
+      .file("ppt/slides/slide1.xml")
+      .async("string");
+    for (const xml of [fileXml, bufXml]) {
+      assert.deepEqual(paragraphPropertyIssues(xml), []);
+      assert.match(xml, /<a:t>Hello<\/a:t>/);
+      assert.match(xml, /<a:t>World<\/a:t>/);
+      assert.match(xml, /algn="ctr"/);
+    }
+  });
+
+  function paragraphTexts(xml) {
+    const paras = [];
+    const re = /<a:p(?:\s[^>]*)?>([\s\S]*?)<\/a:p>/g;
+    let match;
+    while ((match = re.exec(xml))) {
+      const texts = [...match[1].matchAll(/<a:t(?:\s[^>]*)?>([\s\S]*?)<\/a:t>/g)].map(
+        (item) => item[1],
+      );
+      paras.push(texts.join(""));
+    }
+    return paras;
+  }
+
+  it("maps run-array newlines as concatenated text: A\\nB + C => A / BC", async () => {
+    const deck = {
+      version: "openppt-1",
+      size: [960, 540],
+      pages: [
+        {
+          id: "p1",
+          elements: [
+            {
+              id: "nl",
+              type: "text",
+              bounds: [20, 20, 500, 120],
+              text: [
+                { text: "A\nB", bold: true },
+                { text: "C", color: "#DC2626" },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    const xml = await readPptxEntry(
+      await openPptx(
+        (
+          await compileToPptx(deck, join(outDir, "newlines.pptx"), {
+            projectRoot: outDir,
+            force: true,
+          })
+        ).outputPath,
+      ),
+      "ppt/slides/slide1.xml",
+    );
+    assert.deepEqual(paragraphTexts(xml), ["A", "BC"]);
+    const bRun = xml.split("<a:t>B</a:t>")[0].split("<a:r>").pop();
+    const cRun = xml.split("<a:t>C</a:t>")[0].split("<a:r>").pop();
+    assert.match(bRun, /b="1"/);
+    assert.doesNotMatch(cRun, /b="1"/);
+    assert.match(cRun, /val="DC2626"/);
+  });
+
+  it("preserves trailing and consecutive newlines in run arrays", async () => {
+    const deck = {
+      version: "openppt-1",
+      size: [960, 540],
+      pages: [
+        {
+          id: "p1",
+          elements: [
+            {
+              id: "trail",
+              type: "text",
+              bounds: [20, 20, 400, 80],
+              text: [{ text: "A\n" }, { text: "B" }],
+            },
+            {
+              id: "gap",
+              type: "text",
+              bounds: [20, 120, 400, 80],
+              text: [{ text: "X\n\nY" }],
+            },
+          ],
+        },
+      ],
+    };
+    const xml = await (
+      await JSZip.loadAsync(await compileToBuffer(deck, { projectRoot: outDir }))
+    )
+      .file("ppt/slides/slide1.xml")
+      .async("string");
+    const paras = paragraphTexts(xml);
+    assert.ok(paras.includes("A") && paras.includes("B"));
+    const aIdx = paras.indexOf("A");
+    assert.equal(paras[aIdx + 1], "B");
+    const xIdx = paras.indexOf("X");
+    const yIdx = paras.indexOf("Y");
+    assert.ok(yIdx > xIdx);
+    assert.equal(paras.slice(xIdx, yIdx + 1).join("|"), "X||Y");
+  });
+
+  it("splits CRLF and CR the same as LF in run arrays", async () => {
+    for (const sep of ["\r\n", "\r"]) {
+      const deck = {
+        version: "openppt-1",
+        size: [960, 540],
+        pages: [
+          {
+            id: "p1",
+            elements: [
+              {
+                id: "nl",
+                type: "text",
+                bounds: [20, 20, 500, 120],
+                href: "https://example.com/openppt",
+                text: [
+                  { text: `A${sep}B`, bold: true },
+                  { text: "C", color: "#DC2626" },
+                ],
+              },
+            ],
+          },
+        ],
+      };
+      const xml = await (
+        await JSZip.loadAsync(await compileToBuffer(deck, { projectRoot: outDir }))
+      )
+        .file("ppt/slides/slide1.xml")
+        .async("string");
+      const paras = paragraphTexts(xml);
+      assert.deepEqual(paras, ["A", "BC"], JSON.stringify(sep));
+      const bRun = xml.split("<a:t>B</a:t>")[0].split("<a:r>").pop();
+      const cRun = xml.split("<a:t>C</a:t>")[0].split("<a:r>").pop();
+      assert.match(bRun, /b="1"/);
+      assert.doesNotMatch(cRun, /b="1"/);
+      assert.match(cRun, /val="DC2626"/);
+      assert.match(xml, /hlinkClick/);
+      assert.equal(paras.some((text) => text.includes("\r")), false);
+    }
   });
 });

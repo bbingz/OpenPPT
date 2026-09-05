@@ -3,19 +3,27 @@ import {
   existsSync,
   unlinkSync,
   renameSync,
-  realpathSync,
   readFileSync,
+  writeFileSync,
   linkSync,
 } from "node:fs";
 import { dirname, resolve, join } from "node:path";
 import { randomBytes } from "node:crypto";
 import PptxGenJS from "pptxgenjs";
-import { resolveColor, validateDeck } from "./validate.js";
+import { resolveColor, validateDeck, effectiveChartLabels } from "./validate.js";
 import { OpenPptError, ErrorCodes } from "./errors.js";
 import { installFileNoClobber } from "./project-write.js";
-
-/** CSS px → inches at 96dpi (matches common web/PPT mapping). */
-const PX_PER_IN = 96;
+import { realOrResolve } from "./internal/paths.js";
+import { pxToInch as pxToIn } from "./internal/units.js";
+import { repairExportedPresentation } from "./internal/ooxml-artifact.js";
+import { chartSeriesPalette } from "./internal/chart-palette.js";
+import {
+  listMarkers,
+  ownValue,
+  paragraphLineHeight,
+  splitParagraphText,
+  vendorNumeric,
+} from "./internal/paragraphs.js";
 
 /**
  * pptxgenjs `sizing.cover|contain` treats options.w/h as the *source image aspect*,
@@ -69,14 +77,6 @@ function placementForFit(nat, box, mode) {
     );
   }
   return place;
-}
-
-/**
- * @param {number} px
- * @returns {number}
- */
-function pxToIn(px) {
-  return px / PX_PER_IN;
 }
 
 /**
@@ -150,14 +150,175 @@ function mapShape(shape, pptx) {
   }
 }
 
+function runOptionsFor(run, el, base, colors) {
+  const runColor = run.color
+    ? toPptxColorParts(resolveColor(run.color, colors, `${el.id}.run`))
+    : base;
+  /** @type {Record<string, unknown>} */
+  const options = {
+    bold: run.bold !== undefined ? Boolean(run.bold) : Boolean(el.bold),
+    fontSize: run.fontSize ?? el.fontSize ?? 18,
+    fontFace: run.fontFamily || el.fontFamily || "Arial",
+    color: runColor.color,
+  };
+  const italic = run.italic !== undefined ? Boolean(run.italic) : Boolean(el.italic);
+  if (italic) options.italic = true;
+  if (runColor.transparency !== undefined) {
+    options.transparency = runColor.transparency;
+  }
+  if (el.href && typeof el.href === "string") {
+    options.hyperlink = { url: el.href };
+  }
+  return options;
+}
+
+function themeChartStyle(colors) {
+  const textHex = colors.text
+    ? toPptxColor(resolveColor(colors.text, colors, "text"))
+    : "111827";
+  const palette = chartSeriesPalette(colors).map((hex) => toPptxColor(hex));
+  return { textHex, palette };
+}
+
+/**
+ * Split IR runs on CRLF / CR / LF into pptxgenjs text objects with cloned options.
+ * A\\nB + C becomes paragraphs A / BC; each fragment owns its options object.
+ * @param {object} el
+ * @param {object} base
+ * @param {Record<string, string>} colors
+ */
+function applyTextTypography(options, el, run) {
+  if (Object.hasOwn(el, "lineHeight")) {
+    options.lineSpacingMultiple = vendorNumeric(el.lineHeight);
+  }
+  if (Object.hasOwn(el, "spaceBefore")) {
+    options.paraSpaceBefore = vendorNumeric(el.spaceBefore);
+  }
+  if (Object.hasOwn(el, "spaceAfter")) {
+    options.paraSpaceAfter = vendorNumeric(el.spaceAfter);
+  }
+  const charSpacing =
+    run && Object.hasOwn(run, "charSpacing")
+      ? run.charSpacing
+      : Object.hasOwn(el, "charSpacing")
+        ? el.charSpacing
+        : undefined;
+  if (charSpacing !== undefined) {
+    options.charSpacing = vendorNumeric(charSpacing);
+  }
+}
+
+function pptxRunsFromRichText(el, base, colors) {
+  const runs = [];
+  for (const run of el.text) {
+    const pieces = String(run.text ?? "").split(/\r\n|\r|\n/);
+    for (let i = 0; i < pieces.length; i += 1) {
+      const options = runOptionsFor(run, el, base, colors);
+      applyTextTypography(options, el, run);
+      if (i < pieces.length - 1) options.breakLine = true;
+      runs.push({ text: pieces[i], options });
+    }
+  }
+  return runs;
+}
+
+function paragraphBulletOptions(marker) {
+  if (!marker || marker.kind === "none") return false;
+  if (marker.kind === "bullet") {
+    return { indent: vendorNumeric(marker.indent) };
+  }
+  return {
+    type: "number",
+    startAt: String(marker.startAt),
+    indent: vendorNumeric(marker.indent),
+  };
+}
+
+function pptxRunsFromParagraphs(el, base, colors) {
+  const markers = listMarkers(el.paragraphs);
+  const runs = [];
+  for (let pi = 0; pi < el.paragraphs.length; pi += 1) {
+    const para = el.paragraphs[pi];
+    const marker = markers[pi];
+    const effectiveEl = {
+      ...el,
+      fontSize: ownValue(para, "fontSize", el.fontSize),
+      fontFamily: ownValue(para, "fontFamily", el.fontFamily),
+      color: ownValue(para, "color", el.color),
+      bold: ownValue(para, "bold", el.bold),
+      italic: ownValue(para, "italic", el.italic),
+    };
+    const paraBase = para.color
+      ? toPptxColorParts(resolveColor(para.color, colors, `${el.id}.paragraph`))
+      : base;
+    const fragments = splitParagraphText(para.text);
+    const align = ownValue(para, "align", el.align || "left");
+    const lineHeight = paragraphLineHeight(para, el);
+    const spaceBefore = ownValue(
+      para,
+      "spaceBefore",
+      Object.hasOwn(el, "spaceBefore") ? el.spaceBefore : undefined,
+    );
+    const spaceAfter = ownValue(
+      para,
+      "spaceAfter",
+      Object.hasOwn(el, "spaceAfter") ? el.spaceAfter : undefined,
+    );
+    const paraCharSpacing = ownValue(
+      para,
+      "charSpacing",
+      Object.hasOwn(el, "charSpacing") ? el.charSpacing : undefined,
+    );
+    for (let fi = 0; fi < fragments.length; fi += 1) {
+      const fragment = fragments[fi];
+      const options = runOptionsFor(fragment.style, effectiveEl, paraBase, colors);
+      options.align = align;
+      options.lineSpacingMultiple = vendorNumeric(lineHeight);
+      if (spaceBefore !== undefined) {
+        options.paraSpaceBefore = vendorNumeric(spaceBefore);
+      }
+      if (spaceAfter !== undefined) {
+        options.paraSpaceAfter = vendorNumeric(spaceAfter);
+      }
+      const charSpacing = Object.hasOwn(fragment.style, "charSpacing")
+        ? fragment.style.charSpacing
+        : paraCharSpacing;
+      if (charSpacing !== undefined) {
+        options.charSpacing = vendorNumeric(charSpacing);
+      }
+      options.bullet = paragraphBulletOptions(marker);
+      if (marker.level > 0) options.indentLevel = marker.level;
+      if (fragment.softBreakBefore) options.softBreakBefore = true;
+      if (fi === fragments.length - 1 && pi < el.paragraphs.length - 1) {
+        options.breakLine = true;
+      }
+      runs.push({ text: fragment.text, options });
+    }
+  }
+  return runs;
+}
+
 /**
  * Shared slide renderer used by file and buffer export paths.
  * @param {object} deck
  * @param {Record<string, string>} colors
  * @param {Map<string, object>} mediaSnapshots
  */
+function authoredLatinFace(deck) {
+  const fonts = deck?.theme?.fonts;
+  if (fonts && Object.hasOwn(fonts, "latin") && typeof fonts.latin === "string") {
+    return fonts.latin;
+  }
+  return undefined;
+}
+
+function themeLatinFace(deck) {
+  return authoredLatinFace(deck) || "Arial";
+}
+
 function buildPresentation(deck, colors, mediaSnapshots) {
   const [canvasW, canvasH] = deck.size;
+  const latinFace = themeLatinFace(deck);
   const pptx = new PptxGenJS();
   pptx.defineLayout({
     name: "OPENPPT",
@@ -168,6 +329,14 @@ function buildPresentation(deck, colors, mediaSnapshots) {
   pptx.author = "OpenPPT";
   if (deck.title) {
     pptx.title = deck.title;
+  }
+  const latinDefault = authoredLatinFace(deck);
+  if (latinDefault) {
+    pptx.theme = {
+      ...(pptx.theme || {}),
+      headFontFace: latinDefault,
+      bodyFontFace: latinDefault,
+    };
   }
 
   for (const page of deck.pages) {
@@ -199,41 +368,31 @@ function buildPresentation(deck, colors, mediaSnapshots) {
         const boxOpts = {
           ...box,
           fontSize: el.fontSize ?? 18,
-          fontFace: el.fontFamily || "Arial",
+          fontFace: el.fontFamily || latinFace,
           color: base.color,
           bold: Boolean(el.bold),
           align: el.align || "left",
           valign: el.valign || "top",
         };
+        if (el.italic) boxOpts.italic = true;
         if (base.transparency !== undefined) {
           boxOpts.transparency = base.transparency;
         }
         if (el.href && typeof el.href === "string") {
           boxOpts.hyperlink = { url: el.href };
         }
-        if (Array.isArray(el.text)) {
-          const runs = el.text.map((run) => {
-            const runColor = run.color
-              ? toPptxColorParts(
-                  resolveColor(run.color, colors, `${el.id}.run`),
-                )
-              : base;
-            /** @type {Record<string, unknown>} */
-            const options = {
-              bold: run.bold !== undefined ? Boolean(run.bold) : Boolean(el.bold),
-              fontSize: run.fontSize ?? el.fontSize ?? 18,
-              fontFace: run.fontFamily || el.fontFamily || "Arial",
-              color: runColor.color,
-            };
-            if (run.italic !== undefined) options.italic = Boolean(run.italic);
-            if (runColor.transparency !== undefined) {
-              options.transparency = runColor.transparency;
-            }
-            if (el.href && typeof el.href === "string") {
-              options.hyperlink = { url: el.href };
-            }
-            return { text: run.text, options };
-          });
+        applyTextTypography(boxOpts, el);
+        if (Array.isArray(el.paragraphs)) {
+          const runs = pptxRunsFromParagraphs(el, base, colors);
+          const runBox = {
+            ...box,
+            align: boxOpts.align,
+            valign: boxOpts.valign,
+            fontFace: boxOpts.fontFace,
+          };
+          slide.addText(runs, runBox);
+        } else if (Array.isArray(el.text)) {
+          const runs = pptxRunsFromRichText(el, base, colors);
           // Do not put run-overridable styles on the box: pptxgenjs ORs box.bold
           // over run.bold:false and would otherwise inherit parent transparency.
           const runBox = {
@@ -283,6 +442,7 @@ function buildPresentation(deck, colors, mediaSnapshots) {
           // The path is an identity key only and is never reopened by the writer.
           path: snapshot.path,
           data: snapshot.dataUri,
+          altText: mediaSrc,
           x: box.x,
           y: box.y,
           w: box.w,
@@ -321,16 +481,30 @@ function buildPresentation(deck, colors, mediaSnapshots) {
         const chartType = typeMap[el.chartType] || pptx.ChartType.bar;
         const series = el.series.map((ser) => ({
           name: ser.name,
-          labels: ser.labels || ser.values.map((_, i) => String(i + 1)),
+          labels: effectiveChartLabels(ser),
           values: ser.values,
         }));
         const isPie = el.chartType === "pie" || el.chartType === "doughnut";
+        const { textHex, palette } = themeChartStyle(colors);
         const chartOpts = {
           ...box,
           showTitle: Boolean(el.title),
           showLegend: isPie || el.series.length > 1,
           showValue: isPie,
           showPercent: isPie,
+          chartColors: palette,
+          color: textHex,
+          titleColor: textHex,
+          legendColor: textHex,
+          dataLabelColor: textHex,
+          catAxisLabelColor: textHex,
+          valAxisLabelColor: textHex,
+          fontFace: latinFace,
+          titleFontFace: latinFace,
+          dataLabelFontFace: latinFace,
+          catAxisLabelFontFace: latinFace,
+          valAxisLabelFontFace: latinFace,
+          legendFontFace: latinFace,
         };
         if (el.title) chartOpts.title = el.title;
         slide.addChart(chartType, series, chartOpts);
@@ -436,7 +610,7 @@ function buildPresentation(deck, colors, mediaSnapshots) {
           ...box,
           colW: colWIn,
           border: tableBorder(borderW, borderColor),
-          fontFace: "Arial",
+          fontFace: latinFace,
           fontSize: defaultFs,
           color: textHex,
           align: "left",
@@ -449,16 +623,42 @@ function buildPresentation(deck, colors, mediaSnapshots) {
   return pptx;
 }
 
-/**
- * Resolve path for equality checks (realpath when possible).
- * @param {string} p
- */
-function realOrResolve(p) {
-  const abs = resolve(p);
+async function renderPresentationBuffer(validatedDeck, colors, mediaSnapshots) {
+  let pptx;
   try {
-    return realpathSync(abs);
-  } catch {
-    return abs;
+    pptx = buildPresentation(validatedDeck, colors, mediaSnapshots);
+  } catch (err) {
+    if (err instanceof OpenPptError) throw err;
+    throw new OpenPptError(
+      ErrorCodes.EXPORT,
+      `pptxgenjs presentation build failed: ${err instanceof Error ? err.message : String(err)}`,
+      { cause: err },
+    );
+  }
+  let data;
+  try {
+    data = await pptx.write({ outputType: "nodebuffer" });
+  } catch (err) {
+    throw new OpenPptError(
+      ErrorCodes.EXPORT,
+      `pptxgenjs write failed: ${err instanceof Error ? err.message : String(err)}`,
+      { cause: err },
+    );
+  }
+  const raw = Buffer.isBuffer(data) ? data : Buffer.from(data);
+  try {
+    const ea =
+      validatedDeck.theme?.fonts && Object.hasOwn(validatedDeck.theme.fonts, "ea")
+        ? validatedDeck.theme.fonts.ea
+        : undefined;
+    return await repairExportedPresentation(raw, { ea });
+  } catch (err) {
+    if (err instanceof OpenPptError) throw err;
+    throw new OpenPptError(
+      ErrorCodes.EXPORT,
+      `Exported PPTX repair failed: ${err instanceof Error ? err.message : String(err)}`,
+      { cause: err },
+    );
   }
 }
 
@@ -504,25 +704,18 @@ export async function compileToPptx(deck, outputPath, options) {
   }
 
   mkdirSync(dirname(out), { recursive: true });
-  let pptx;
-  try {
-    pptx = buildPresentation(validatedDeck, colors, mediaSnapshots);
-  } catch (err) {
-    if (err instanceof OpenPptError) throw err;
-    throw new OpenPptError(
-      ErrorCodes.EXPORT,
-      `pptxgenjs presentation build failed: ${err instanceof Error ? err.message : String(err)}`,
-      { cause: err },
-    );
-  }
-  // pptxgenjs appends ".pptx" when the path does not already end with it.
   const tmp = join(
     dirname(out),
     `.openppt-export-${randomBytes(8).toString("hex")}.tmp.pptx`,
   );
 
   try {
-    await pptx.writeFile({ fileName: tmp });
+    const buf = await renderPresentationBuffer(
+      validatedDeck,
+      colors,
+      mediaSnapshots,
+    );
+    writeFileSync(tmp, buf);
     if (!existsSync(tmp)) {
       throw new OpenPptError(ErrorCodes.EXPORT, `Export produced no temp file at ${tmp}`);
     }
@@ -578,17 +771,5 @@ export async function compileToBuffer(deck, options) {
     checkMedia: true,
     captureMedia: true,
   });
-  let pptx;
-  try {
-    pptx = buildPresentation(validatedDeck, colors, mediaSnapshots);
-  } catch (err) {
-    if (err instanceof OpenPptError) throw err;
-    throw new OpenPptError(
-      ErrorCodes.EXPORT,
-      `pptxgenjs presentation build failed: ${err instanceof Error ? err.message : String(err)}`,
-      { cause: err },
-    );
-  }
-  const data = await pptx.write({ outputType: "nodebuffer" });
-  return Buffer.isBuffer(data) ? data : Buffer.from(data);
+  return renderPresentationBuffer(validatedDeck, colors, mediaSnapshots);
 }

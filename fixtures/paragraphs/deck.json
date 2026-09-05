@@ -1,0 +1,56 @@
+{
+  "version": "openppt-1",
+  "title": "Paragraph and list styles",
+  "size": [960, 540],
+  "theme": {
+    "colors": { "text": "#111827", "primary": "#2563EB", "background": "#FFFFFF" },
+    "fonts": { "latin": "Arial", "ea": "Noto Sans CJK SC" },
+    "textStyles": {
+      "body": {
+        "fontSize": 20,
+        "bold": true,
+        "lineHeight": 1.5,
+        "spaceBefore": 12,
+        "spaceAfter": 6,
+        "charSpacing": 1
+      }
+    }
+  },
+  "pages": [
+    {
+      "id": "lists",
+      "background": { "type": "solid", "color": "$background" },
+      "elements": [
+        {
+          "id": "heading",
+          "type": "text",
+          "bounds": [48, 24, 864, 48],
+          "text": "段落与编号 · Paragraphs",
+          "fontSize": 28,
+          "bold": true,
+          "color": "$primary",
+          "italic": false
+        },
+        {
+          "id": "paragraphs",
+          "type": "text",
+          "style": "$body",
+          "bounds": [48, 84, 864, 420],
+          "paragraphs": [
+            {
+              "text": [
+                { "text": "中文第一行\nSecond line", "bold": false },
+                { "text": " + inline tail", "italic": true, "charSpacing": 0 }
+              ],
+              "bullet": { "type": "number", "start": 3 },
+              "spaceBefore": 0
+            },
+            { "text": "Next numbered item", "bullet": { "type": "number" } },
+            { "text": "", "bullet": false, "spaceBefore": 0, "spaceAfter": 0 },
+            { "text": "Unordered final / 无序要点", "bullet": true }
+          ]
+        }
+      ]
+    }
+  ]
+}

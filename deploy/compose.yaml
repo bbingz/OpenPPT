@@ -1,0 +1,26 @@
+name: openppt
+services:
+  studio:
+    image: openppt:${OPENPPT_REVISION:?Set the verified Git commit}
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+      labels:
+        org.opencontainers.image.revision: ${OPENPPT_REVISION}
+    init: true
+    restart: unless-stopped
+    ports:
+      - "${OPENPPT_BIND_IP:?Set the private host IP}:7357:7357"
+    environment:
+      OPENPPT_PUBLIC_ORIGIN: ${OPENPPT_PUBLIC_ORIGIN:?Set the exact browser origin}
+    volumes:
+      - projects:/data/projects
+    cpus: 2
+    mem_limit: 2g
+    pids_limit: 256
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+volumes:
+  projects:

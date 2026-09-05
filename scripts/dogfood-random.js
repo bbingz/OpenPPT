@@ -20,6 +20,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import JSZip from "jszip";
+import { stringify as yamlStringify } from "yaml";
 
 import {
   loadDeck,
@@ -170,19 +171,23 @@ function buildGenerator(rng) {
   }
 
   function leafChart() {
+    const chartType = rng.pick(["bar", "line", "pie", "doughnut", "area"]);
     const points = rng.int(2, 10);
+    const n = chartType === "pie" || chartType === "doughnut" ? 1 : rng.int(1, 3);
+    const labels = rng.chance(0.5)
+      ? Array.from({ length: points }, (_, k) => `C${k + 1}`)
+      : null;
     const series = [];
-    const n = rng.int(1, 3);
     for (let i = 0; i < n; i += 1) {
       const values = [];
       for (let p = 0; p < points; p += 1) values.push(rng.int(-50, 500) + rng.next());
       const entry = { name: `S${i + 1}`, values };
-      if (rng.chance(0.5)) entry.labels = values.map((_, k) => `C${k + 1}`);
+      if (labels) entry.labels = labels.slice();
       series.push(entry);
     }
     const el = {
       id: id("ch"), type: "chart",
-      chartType: rng.pick(["bar", "line", "pie", "doughnut", "area"]),
+      chartType,
       series,
     };
     if (rng.chance(0.5)) el.title = rng.pick(TEXT_POOL);
@@ -425,14 +430,40 @@ async function main() {
   const gen = buildGenerator(rng);
   let failures = 0;
 
-  /* positive half */
+  /* positive half — three authoring variants: plain JSON, multi-file, YAML */
   for (let i = 1; i <= count; i += 1) {
     const deck = gen.deck(i);
     const dir = join(outDir, `deck-${String(i).padStart(3, "0")}`);
     mkdirSync(join(dir, "media"), { recursive: true });
     for (const media of MEDIA_POOL) writeFileSync(join(dir, media.src), media.bytes);
-    const deckPath = join(dir, "deck.json");
-    writeFileSync(deckPath, `${JSON.stringify(deck, null, 2)}\n`, "utf8");
+
+    const variantRoll = rng.next();
+    let deckPath;
+    if (variantRoll < 0.2) {
+      // YAML authoring path
+      deckPath = join(dir, "deck.yaml");
+      writeFileSync(deckPath, yamlStringify(deck), "utf8");
+    } else if (variantRoll < 0.45) {
+      // multi-file: externalize a random subset of pages (keep ≥1 inline when possible)
+      mkdirSync(join(dir, "pages"), { recursive: true });
+      const mixed = deck.pages.map((page, pi) => {
+        if (rng.chance(0.6)) {
+          const rel = `pages/pg-${pi + 1}.json`;
+          writeFileSync(join(dir, rel), `${JSON.stringify(page, null, 2)}\n`, "utf8");
+          return rel;
+        }
+        return page;
+      });
+      deckPath = join(dir, "deck.json");
+      writeFileSync(
+        deckPath,
+        `${JSON.stringify({ ...deck, pages: mixed }, null, 2)}\n`,
+        "utf8",
+      );
+    } else {
+      deckPath = join(dir, "deck.json");
+      writeFileSync(deckPath, `${JSON.stringify(deck, null, 2)}\n`, "utf8");
+    }
 
     const problems = [];
     try {

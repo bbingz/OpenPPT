@@ -1,0 +1,36 @@
+{
+  "id": "narrative",
+  "background": { "type": "solid", "color": "$background" },
+  "elements": [
+    {
+      "id": "panel",
+      "type": "group",
+      "layout": "stack",
+      "bounds": [48, 36, 864, 468],
+      "gap": 16,
+      "children": [
+        {
+          "id": "title",
+          "type": "text",
+          "height": 56,
+          "text": "{{TITLE}}",
+          "style": "$title"
+        },
+        {
+          "id": "kicker",
+          "type": "text",
+          "height": 40,
+          "text": "{{KICKER}}",
+          "style": "$muted"
+        },
+        {
+          "id": "body",
+          "type": "text",
+          "flex": 1,
+          "text": "{{BODY}}",
+          "style": "$body"
+        }
+      ]
+    }
+  ]
+}
