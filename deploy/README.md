@@ -7,19 +7,20 @@ SSE. This is a single-user trusted-network service, without application login.
 Bind only to the host's private/Tailscale IP; do not publish it to the internet.
 
 After all PR checks pass for the exact commit, copy that Git archive to a fresh
-release directory on macmini-m1. Use a stable Compose project name (`openppt`) so
+release directory on the private deployment host. Use a stable Compose project name (`openppt`) so
 the `openppt_projects` volume survives releases. The image includes LibreOffice,
 Poppler and CJK fonts; user projects remain outside the image.
 
 ```sh
 export OPENPPT_REVISION=<full-verified-commit>
 export OPENPPT_BIND_IP=<host-tailscale-ip>
-export OPENPPT_PUBLIC_ORIGIN=http://macmini-m1:7357
+export OPENPPT_PUBLIC_ORIGIN=http://studio.internal:7357
 docker compose -p openppt -f deploy/compose.yaml config --quiet
 docker compose -p openppt -f deploy/compose.yaml build --pull
 docker compose -p openppt -f deploy/compose.yaml up -d --wait --wait-timeout 120
 ```
 
+Replace `studio.internal` with the actual private hostname before deployment.
 The browser must use the configured hostname and port. A request addressed by a
 different alias/IP is rejected. No reverse proxy, authentication bypass or
 wildcard Origin is configured. For HTTPS, terminate TLS at an independently
