@@ -36,6 +36,24 @@
             "type": "string",
             "pattern": "^#([0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})$"
           }
+        },
+        "fonts": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "latin": { "$ref": "#/$defs/fontFamily" },
+            "ea": { "$ref": "#/$defs/fontFamily" }
+          },
+          "description": "Optional script defaults. latin is the Latin typeface fallback; ea, when set, is the East Asian typeface for generated DrawingML. No per-run EA aliases."
+        },
+        "textStyles": {
+          "type": "object",
+          "maxProperties": 128,
+          "propertyNames": {
+            "type": "string",
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]*$"
+          },
+          "additionalProperties": { "$ref": "#/$defs/textStyle" }
         }
       }
     },
@@ -66,6 +84,82 @@
       "type": "string",
       "description": "HEX #RRGGBB / #RRGGBBAA or theme token $name",
       "pattern": "^(\\$[A-Za-z][A-Za-z0-9_-]*|#([0-9A-Fa-f]{6}|[0-9A-Fa-f]{8}))$"
+    },
+    "fontFamily": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9\\u00A0-\\uD7FF\\uE000-\\uFFFD][A-Za-z0-9 '\\-_.()\\u00A0-\\uD7FF\\uE000-\\uFFFD]*$",
+      "description": "Typeface name safe for XML 1.0 attributes. Latin/CJK letters, digits, space, apostrophe, hyphen, underscore, period, parentheses. Length uses the existing stringBytes ceiling."
+    },
+    "textStyle": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "fontSize": { "type": "number", "exclusiveMinimum": 0, "maximum": 4000 },
+        "fontFamily": { "$ref": "#/$defs/fontFamily" },
+        "color": { "$ref": "#/$defs/color" },
+        "bold": { "type": "boolean" },
+        "italic": { "type": "boolean" },
+        "align": {
+          "type": "string",
+          "enum": ["left", "center", "right"]
+        },
+        "valign": {
+          "type": "string",
+          "enum": ["top", "middle", "bottom"]
+        },
+        "lineHeight": { "type": "number", "minimum": 0.5, "maximum": 9.99 },
+        "spaceBefore": { "type": "number", "minimum": 0, "maximum": 1584 },
+        "spaceAfter": { "type": "number", "minimum": 0, "maximum": 1584 },
+        "charSpacing": { "type": "number", "minimum": -100, "maximum": 100 }
+      }
+    },
+    "bullet": {
+      "oneOf": [
+        { "type": "boolean" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type"],
+          "properties": {
+            "type": { "enum": ["bullet", "number"] },
+            "level": { "type": "integer", "minimum": 0, "maximum": 8 },
+            "start": { "type": "integer", "minimum": 1, "maximum": 32767 },
+            "indent": { "type": "number", "minimum": 0, "maximum": 1584 }
+          }
+        }
+      ]
+    },
+    "paragraph": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["text"],
+      "properties": {
+        "text": {
+          "oneOf": [
+            { "type": "string" },
+            {
+              "type": "array",
+              "minItems": 1,
+              "items": { "$ref": "#/$defs/textRun" }
+            }
+          ]
+        },
+        "fontSize": { "type": "number", "exclusiveMinimum": 0, "maximum": 4000 },
+        "fontFamily": { "$ref": "#/$defs/fontFamily" },
+        "color": { "$ref": "#/$defs/color" },
+        "bold": { "type": "boolean" },
+        "italic": { "type": "boolean" },
+        "align": {
+          "type": "string",
+          "enum": ["left", "center", "right"]
+        },
+        "lineHeight": { "type": "number", "minimum": 0.5, "maximum": 9.99 },
+        "spaceBefore": { "type": "number", "minimum": 0, "maximum": 1584 },
+        "spaceAfter": { "type": "number", "minimum": 0, "maximum": 1584 },
+        "charSpacing": { "type": "number", "minimum": -100, "maximum": 100 },
+        "bullet": { "$ref": "#/$defs/bullet" }
+      }
     },
     "solidFill": {
       "type": "object",
@@ -100,7 +194,7 @@
     "textElement": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "type", "bounds", "text"],
+      "required": ["id", "type", "bounds"],
       "properties": {
         "id": { "type": "string", "minLength": 1 },
         "type": { "const": "text" },
@@ -117,9 +211,15 @@
           ]
         },
         "fontSize": { "type": "number", "exclusiveMinimum": 0, "maximum": 4000 },
-        "fontFamily": { "type": "string" },
+        "fontFamily": { "$ref": "#/$defs/fontFamily" },
         "color": { "$ref": "#/$defs/color" },
         "bold": { "type": "boolean" },
+        "italic": { "type": "boolean" },
+        "style": {
+          "type": "string",
+          "pattern": "^\\$[A-Za-z][A-Za-z0-9_-]*$",
+          "description": "Named theme.textStyles reference, e.g. $body. Own-property lookup; no cascade."
+        },
         "align": {
           "type": "string",
           "enum": ["left", "center", "right"]
@@ -133,6 +233,17 @@
           "minLength": 1,
           "pattern": "^(https?://|mailto:)[^\\s]+$",
           "description": "Optional hyperlink URL on the text box (http(s) or mailto)"
+        },
+        "lineHeight": { "type": "number", "minimum": 0.5, "maximum": 9.99 },
+        "spaceBefore": { "type": "number", "minimum": 0, "maximum": 1584 },
+        "spaceAfter": { "type": "number", "minimum": 0, "maximum": 1584 },
+        "charSpacing": { "type": "number", "minimum": -100, "maximum": 100 },
+        "paragraphs": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 256,
+          "items": { "$ref": "#/$defs/paragraph" },
+          "description": "Explicit paragraphs. Exactly one of text or paragraphs is required."
         }
       }
     },
@@ -143,10 +254,11 @@
       "properties": {
         "text": { "type": "string" },
         "fontSize": { "type": "number", "exclusiveMinimum": 0, "maximum": 4000 },
-        "fontFamily": { "type": "string" },
+        "fontFamily": { "$ref": "#/$defs/fontFamily" },
         "color": { "$ref": "#/$defs/color" },
         "bold": { "type": "boolean" },
-        "italic": { "type": "boolean" }
+        "italic": { "type": "boolean" },
+        "charSpacing": { "type": "number", "minimum": -100, "maximum": 100 }
       }
     },
     "shapeElement": {

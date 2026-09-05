@@ -86,6 +86,10 @@ with the CLI and library workflows above. The preview iframe is sandboxed and
 served with a strict CSP; media uploads enforce the same fail-closed validation
 as export.
 
+For a persistent private-network service, see [remote Docker deployment](deploy/README.md).
+The container requires one exact browser origin and a private host binding;
+the ordinary `serve` command keeps its loopback default.
+
 ### Agent skill
 
 Thin skill for Claude Code / Codex / Cursor (and any SKILL.md host):

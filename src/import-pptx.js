@@ -31,9 +31,8 @@ import {
   RESOURCE_LIMITS,
 } from "./resource-limits.js";
 import { validateDeck } from "./validate.js";
+import { emuToPx } from "./internal/units.js";
 
-/** EMUs per CSS px at 96dpi (914400 EMU/in ÷ 96). */
-const EMU_PER_PX = 9525;
 const PPTX_OPEN_FLAGS =
   constants.O_RDONLY |
   (process.platform === "win32"
@@ -41,13 +40,6 @@ const PPTX_OPEN_FLAGS =
     : (constants.O_NOFOLLOW || 0) | (constants.O_NONBLOCK || 0));
 const ZIP_EOCD_SIGNATURE = 0x06054b50;
 const ZIP_CENTRAL_SIGNATURE = 0x02014b50;
-
-/**
- * @param {number} emu
- */
-function emuToPx(emu) {
-  return Math.round(Number(emu) / EMU_PER_PX);
-}
 
 function isXmlNameEnd(ch) {
   return (
@@ -123,6 +115,7 @@ const SHAPE_CHILD_SPECS = [
   { kind: "sp", open: "<p:sp", close: "</p:sp>" },
   { kind: "pic", open: "<p:pic", close: "</p:pic>" },
   { kind: "graphicFrame", open: "<p:graphicFrame", close: "</p:graphicFrame>" },
+  { kind: "cxnSp", open: "<p:cxnSp", close: "</p:cxnSp>" },
 ];
 
 function indexOfOpenTag(xml, open, from = 0) {
@@ -236,6 +229,23 @@ function sourcePartFromRelsPath(relsPath) {
   return normalized.replace(/\/_rels\/([^/]+)\.rels$/, "/$1");
 }
 
+function relsPathForPart(partPath) {
+  const normalized = String(partPath).replace(/\\/g, "/").replace(/^\/+/, "");
+  const slash = normalized.lastIndexOf("/");
+  const dir = slash >= 0 ? normalized.slice(0, slash) : "";
+  const base = slash >= 0 ? normalized.slice(slash + 1) : normalized;
+  return dir ? `${dir}/_rels/${base}.rels` : `_rels/${base}.rels`;
+}
+
+function zipHasFile(zip, path) {
+  if (!path || path.endsWith("/")) return false;
+  const entry = zip.file(path);
+  return Boolean(entry && !entry.dir);
+}
+
+const SLIDE_REL_TYPE =
+  "http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide";
+
 function resolveZipTarget(relsPath, target) {
   const normalized = String(target).replace(/\\/g, "/");
   if (normalized.startsWith("/")) return normalized.replace(/^\/+/, "");
@@ -295,21 +305,46 @@ function resolveAlternateContent(xml) {
       : choice
         ? innerXml(choice, "mc:Choice")
         : "";
-    out = out.replace(block, keep);
+    const at = out.indexOf(block);
+    if (at >= 0) {
+      out = out.slice(0, at) + keep + out.slice(at + block.length);
+    }
   }
   return out;
 }
 
-function parseOffExt(xml) {
-  const off = xml.match(/<a:off x="(-?\d+)" y="(-?\d+)"/);
-  const ext = xml.match(/<a:ext cx="(-?\d+)" cy="(-?\d+)"/);
+function openTagByName(xml, open, from = 0) {
+  const start = indexOfOpenTag(xml, open, from);
+  if (start < 0) return null;
+  const end = xml.indexOf(">", start);
+  if (end < 0) return null;
+  return xml.slice(start, end + 1);
+}
+
+function attrInt(tag, name) {
+  const raw = attrAny(tag, name);
+  if (raw == null || !/^-?\d+$/.test(raw)) return null;
+  return Number(raw);
+}
+
+function parseNamedOffExt(xml, offName, extName) {
+  const off = openTagByName(xml, offName);
+  const ext = openTagByName(xml, extName);
   if (!off || !ext) return null;
-  return {
-    x: Number(off[1]),
-    y: Number(off[2]),
-    cx: Number(ext[1]),
-    cy: Number(ext[2]),
-  };
+  const x = attrInt(off, "x");
+  const y = attrInt(off, "y");
+  const cx = attrInt(ext, "cx");
+  const cy = attrInt(ext, "cy");
+  if (x == null || y == null || cx == null || cy == null) return null;
+  return { x, y, cx, cy };
+}
+
+function parseOffExt(xml) {
+  return parseNamedOffExt(xml, "<a:off", "<a:ext");
+}
+
+function parseChOffExt(xml) {
+  return parseNamedOffExt(xml, "<a:chOff", "<a:chExt");
 }
 
 function xfrmOpenTag(xfrmXml) {
@@ -337,21 +372,18 @@ function parseGroupXfrm(grpXml) {
   const xfrm = firstBlock(pr, "<a:xfrm", "</a:xfrm>");
   if (!xfrm) return null;
   const offExt = parseOffExt(xfrm);
-  const chOff = xfrm.match(/<a:chOff x="(-?\d+)" y="(-?\d+)"/);
-  const chExt = xfrm.match(/<a:chExt cx="(-?\d+)" cy="(-?\d+)"/);
-  if (!offExt || !chOff || !chExt) return null;
-  const chExtCx = Number(chExt[1]);
-  const chExtCy = Number(chExt[2]);
-  if (chExtCx === 0 || chExtCy === 0) return null;
+  const ch = parseChOffExt(xfrm);
+  if (!offExt || !ch) return null;
+  if (ch.cx === 0 || ch.cy === 0) return null;
   return {
     offX: offExt.x,
     offY: offExt.y,
     extCx: offExt.cx,
     extCy: offExt.cy,
-    chOffX: Number(chOff[1]),
-    chOffY: Number(chOff[2]),
-    chExtCx,
-    chExtCy,
+    chOffX: ch.x,
+    chOffY: ch.y,
+    chExtCx: ch.cx,
+    chExtCy: ch.cy,
     rotOrFlip: xfrmHasRotOrFlip(xfrm),
   };
 }
@@ -421,10 +453,109 @@ function parseColorFromFragment(fragment, ctx) {
   return null;
 }
 
-function parseSolidFillHex(xml, ctx) {
-  const fill = firstBlock(xml, "<a:solidFill", "</a:solidFill>");
-  if (!fill) return null;
-  return parseColorFromFragment(fill, ctx);
+const UNSUPPORTED_SPPR_FILLS = new Set([
+  "a:gradFill",
+  "a:blipFill",
+  "a:pattFill",
+  "a:grpFill",
+]);
+
+/**
+ * Skip one comment, CDATA, PI, or closing/declaration tag as a single unit.
+ * @param {string} xml
+ * @param {number} start index of "<"
+ * @returns {number | null} index after the unit, or null if this is an element
+ */
+function skipXmlNonElement(xml, start) {
+  if (xml.startsWith("<!--", start)) {
+    const end = xml.indexOf("-->", start + 4);
+    return end < 0 ? xml.length : end + 3;
+  }
+  if (xml.startsWith("<![CDATA[", start)) {
+    const end = xml.indexOf("]]>", start + 9);
+    return end < 0 ? xml.length : end + 3;
+  }
+  if (xml.startsWith("<?", start)) {
+    const end = xml.indexOf("?>", start + 2);
+    return end < 0 ? xml.length : end + 2;
+  }
+  if (xml.startsWith("</", start) || xml.startsWith("<!", start)) {
+    const gt = xml.indexOf(">", start);
+    return gt < 0 ? xml.length : gt + 1;
+  }
+  return null;
+}
+
+/**
+ * Top-level children of `p:spPr` only. Nested `a:ln` / effect fills are ignored.
+ * @param {string} parentXml
+ * @param {string} parentName
+ * @returns {{ name: string, block: string }[]}
+ */
+function directChildElements(parentXml, parentName) {
+  const inner = innerXml(parentXml, parentName);
+  const children = [];
+  let i = 0;
+  while (i < inner.length) {
+    const start = inner.indexOf("<", i);
+    if (start < 0) break;
+    const skipped = skipXmlNonElement(inner, start);
+    if (skipped != null) {
+      i = skipped;
+      continue;
+    }
+    let nameEnd = start + 1;
+    while (nameEnd < inner.length && !isXmlNameEnd(inner[nameEnd])) nameEnd += 1;
+    const name = inner.slice(start + 1, nameEnd);
+    if (!name) {
+      i = start + 1;
+      continue;
+    }
+    const gt = inner.indexOf(">", start);
+    if (gt < 0) break;
+    if (inner[gt - 1] === "/") {
+      children.push({ name, block: inner.slice(start, gt + 1) });
+      i = gt + 1;
+      continue;
+    }
+    const extracted = extractBalancedBlock(
+      inner,
+      start,
+      `<${name}`,
+      `</${name}>`,
+    );
+    if (!extracted) break;
+    children.push({ name, block: extracted.block });
+    i = extracted.end;
+  }
+  return children;
+}
+
+/**
+ * @param {string | null} spPr
+ * @param {object} ctx
+ * @returns {{ fillHex: string | null, noFill: boolean, unsupported: string | null }}
+ */
+function parseDirectSpPrFill(spPr, ctx) {
+  /** @type {{ fillHex: string | null, noFill: boolean, unsupported: string | null }} */
+  const result = { fillHex: null, noFill: false, unsupported: null };
+  if (!spPr) return result;
+  for (const child of directChildElements(spPr, "p:spPr")) {
+    if (child.name === "a:noFill") {
+      result.noFill = true;
+      result.fillHex = null;
+      result.unsupported = null;
+    } else if (child.name === "a:solidFill") {
+      result.noFill = false;
+      result.fillHex = parseColorFromFragment(child.block, ctx);
+      result.unsupported = null;
+    } else if (UNSUPPORTED_SPPR_FILLS.has(child.name)) {
+      result.noFill = false;
+      result.fillHex = null;
+      result.unsupported = child.name;
+    }
+  }
+  return result;
 }
 
 function mapChildEmu(parent, child) {
@@ -740,6 +871,24 @@ function nextElementId(ctx, kind) {
   return `p${ctx.pageIndex}-${kind}${ctx.ids.n++}`;
 }
 
+const PARAGRAPH_ALIGN = Object.freeze({
+  l: "left",
+  ctr: "center",
+  r: "right",
+});
+
+function parseParagraphAlign(xml, ctx) {
+  const paragraph = firstBlock(xml, "<a:p", "</a:p>") || xml;
+  const pPrOpen = openTagByName(paragraph, "<a:pPr");
+  const algn = pPrOpen ? attrAny(pPrOpen, "algn") : null;
+  if (!algn) return "left";
+  if (PARAGRAPH_ALIGN[algn]) return PARAGRAPH_ALIGN[algn];
+  ctx.warnings.push(
+    `page ${ctx.pageIndex}: dropped unsupported paragraph align '${algn}'`,
+  );
+  return "left";
+}
+
 function buildTextElement(sp, bounds, ctx) {
   const extracted = trimRichRuns(extractRichRuns(sp, ctx));
   if (extracted.length === 0) return null;
@@ -750,9 +899,7 @@ function buildTextElement(sp, bounds, ctx) {
     ctx.pageIndex,
     id,
   );
-  const algn = sp.match(/algn="([lctr])"/);
-  const alignMap = { l: "left", c: "center", r: "right", t: "left" };
-  const align = algn ? alignMap[algn[1]] || "left" : "left";
+  const align = parseParagraphAlign(sp, ctx);
   const collapsed = collapseHomogeneousRuns(runs);
   if (collapsed) {
     return {
@@ -782,37 +929,57 @@ function buildTextElement(sp, bounds, ctx) {
 function parseSpBlock(sp, ctx) {
   const bounds = boundsFromXml(sp, ctx.parentXfrm);
   if (!bounds) return;
-  const spPr = firstBlock(sp, "<p:spPr", "</p:spPr>") || sp;
-  const fillHex = parseSolidFillHex(spPr, ctx);
-  const prst = attr(sp, "prst") || "rect";
-  const noFill = /<a:noFill\/>/.test(spPr);
+  const spPr = firstBlock(sp, "<p:spPr", "</p:spPr>");
+  const fill = parseDirectSpPrFill(spPr, ctx);
+  const prst = attr(spPr || "", "prst") || "rect";
   const textEl = buildTextElement(sp, bounds, ctx);
+  const shapeMap = {
+    rect: "rect",
+    roundRect: "roundRect",
+    ellipse: "ellipse",
+    circle: "ellipse",
+  };
 
-  if (textEl) {
-    ctx.elements.push(textEl);
-  } else if (fillHex && !noFill) {
-    const shapeMap = {
-      rect: "rect",
-      roundRect: "roundRect",
-      ellipse: "ellipse",
-      circle: "ellipse",
-    };
+  if (fill.fillHex && !fill.noFill) {
     ctx.elements.push({
       id: nextElementId(ctx, "s"),
       type: "shape",
       bounds,
       shape: shapeMap[prst] || "rect",
-      fill: fillHex,
+      fill: fill.fillHex,
     });
+  } else if (fill.unsupported) {
+    ctx.warnings.push(
+      `page ${ctx.pageIndex}: dropped unsupported shape fill ${fill.unsupported}`,
+    );
   }
+
+  if (textEl) ctx.elements.push(textEl);
 }
 
 function parsePicBlock(pic, ctx) {
   const bounds = boundsFromXml(pic, ctx.parentXfrm);
-  const embed = pic.match(/r:embed="(rId\d+)"/);
-  if (!bounds || !embed) return;
-  const mediaPath = ctx.relIdToMediaPath.get(embed[1]);
-  if (!mediaPath) return;
+  const blip = openTagByName(pic, "<a:blip");
+  const embed = blip ? attrAny(blip, "r:embed") : null;
+  if (!bounds) {
+    ctx.warnings.push(
+      `page ${ctx.pageIndex}: skipped picture; missing transform`,
+    );
+    return;
+  }
+  if (!embed) {
+    ctx.warnings.push(
+      `page ${ctx.pageIndex}: skipped picture; missing embed relationship`,
+    );
+    return;
+  }
+  const mediaPath = ctx.relIdToMediaPath.get(embed);
+  if (!mediaPath) {
+    ctx.warnings.push(
+      `page ${ctx.pageIndex}: skipped picture; missing media for ${embed}`,
+    );
+    return;
+  }
   ctx.elements.push({
     id: nextElementId(ctx, "i"),
     type: "image",
@@ -929,6 +1096,10 @@ function parseShapeTree(xml, ctx, depth) {
       parsePicBlock(extracted.block, ctx);
     } else if (next.kind === "graphicFrame") {
       parseGraphicFrameBlock(extracted.block, ctx);
+    } else if (next.kind === "cxnSp") {
+      ctx.warnings.push(
+        `page ${ctx.pageIndex}: skipped connector (p:cxnSp); not represented in IR`,
+      );
     }
   }
 }
@@ -1498,14 +1669,16 @@ export async function importPptx(pptxPath, outDir, options = {}) {
   const presentationRelsXml =
     (await readZipText(readZipEntry, "ppt/_rels/presentation.xml.rels")) || "";
   const presentationRels = parseRelationships(presentationRelsXml);
+  const relById = new Map();
   const ridToSlide = new Map();
   let themePath = "ppt/theme/theme1.xml";
   for (const rel of presentationRels) {
+    relById.set(rel.id, rel);
     const target = resolveZipTarget(
       "ppt/_rels/presentation.xml.rels",
       rel.target,
     );
-    if (/^ppt\/slides\/slide\d+\.xml$/i.test(target)) {
+    if (rel.type === SLIDE_REL_TYPE && zipHasFile(zip, target)) {
       ridToSlide.set(rel.id, target);
     }
     if (
@@ -1524,23 +1697,39 @@ export async function importPptx(pptxPath, outDir, options = {}) {
   if (presXml) {
     const seen = new Set();
     for (const rid of parseSldIdLst(presXml)) {
-      const target = ridToSlide.get(rid);
-      if (!target || seen.has(target) || !zip.file(target)) continue;
+      const rel = relById.get(rid);
+      if (!rel || rel.type !== SLIDE_REL_TYPE) {
+        warnings.push(
+          `skipped sldIdLst relationship ${rid}; unresolved slide relationship`,
+        );
+        continue;
+      }
+      const target = resolveZipTarget(
+        "ppt/_rels/presentation.xml.rels",
+        rel.target,
+      );
+      if (!zipHasFile(zip, target)) {
+        warnings.push(
+          `skipped sldIdLst relationship ${rid}; missing slide part ${target}`,
+        );
+        continue;
+      }
+      if (seen.has(target)) continue;
       seen.add(target);
       slidePaths.push(target);
     }
   }
   if (slidePaths.length === 0) {
     warnings.push(
-      "presentation sldIdLst missing or empty; falling back to slideN.xml filename order",
+      "presentation sldIdLst missing or empty; falling back to slide relationships",
     );
-    slidePaths = Object.keys(zip.files)
-      .filter((p) => /^ppt\/slides\/slide\d+\.xml$/i.test(p))
-      .sort((a, b) => {
-        const na = Number(a.match(/slide(\d+)/i)?.[1] || 0);
-        const nb = Number(b.match(/slide(\d+)/i)?.[1] || 0);
-        return na - nb;
-      });
+    const seen = new Set();
+    for (const rel of presentationRels) {
+      const target = ridToSlide.get(rel.id);
+      if (!target || seen.has(target) || !zipHasFile(zip, target)) continue;
+      seen.add(target);
+      slidePaths.push(target);
+    }
   }
 
   assertResourceLimit(
@@ -1569,9 +1758,7 @@ export async function importPptx(pptxPath, outDir, options = {}) {
     if (!slideXml) continue;
 
     // Relationships for images + charts
-    const relPath = slidePath
-      .replace("ppt/slides/", "ppt/slides/_rels/")
-      .replace(/\.xml$/, ".xml.rels");
+    const relPath = relsPathForPart(slidePath);
     const relXml = (await readZipText(readZipEntry, relPath)) || "";
     /** @type {Map<string, string>} */
     const relIdToMedia = new Map();
@@ -1585,8 +1772,7 @@ export async function importPptx(pptxPath, outDir, options = {}) {
         if (chartXml) relIdToChartXml.set(rId, chartXml);
         continue;
       }
-      const mediaFile = zip.file(target);
-      if (!mediaFile) continue;
+      if (!zipHasFile(zip, target)) continue;
       const ext = extname(target).toLowerCase() || ".png";
       const allowed = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"]);
       if (!allowed.has(ext)) {

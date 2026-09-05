@@ -1,0 +1,94 @@
+{
+  "id": "kpi-row",
+  "background": { "type": "solid", "color": "$background" },
+  "elements": [
+    {
+      "id": "title",
+      "type": "text",
+      "bounds": [48, 36, 864, 56],
+      "text": "{{TITLE}}",
+      "style": "$title"
+    },
+    {
+      "id": "row",
+      "type": "group",
+      "layout": "row",
+      "bounds": [48, 108, 864, 396],
+      "gap": 24,
+      "children": [
+        {
+          "id": "kpi-1",
+          "type": "group",
+          "layout": "stack",
+          "flex": 1,
+          "gap": 12,
+          "children": [
+            {
+              "id": "kpi-1-value",
+              "type": "text",
+              "height": 80,
+              "text": "{{VALUE_1}}",
+              "style": "$kpiValue",
+              "valign": "middle"
+            },
+            {
+              "id": "kpi-1-label",
+              "type": "text",
+              "flex": 1,
+              "text": "{{LABEL_1}}",
+              "style": "$kpiLabel"
+            }
+          ]
+        },
+        {
+          "id": "kpi-2",
+          "type": "group",
+          "layout": "stack",
+          "flex": 1,
+          "gap": 12,
+          "children": [
+            {
+              "id": "kpi-2-value",
+              "type": "text",
+              "height": 80,
+              "text": "{{VALUE_2}}",
+              "style": "$kpiValue",
+              "valign": "middle"
+            },
+            {
+              "id": "kpi-2-label",
+              "type": "text",
+              "flex": 1,
+              "text": "{{LABEL_2}}",
+              "style": "$kpiLabel"
+            }
+          ]
+        },
+        {
+          "id": "kpi-3",
+          "type": "group",
+          "layout": "stack",
+          "flex": 1,
+          "gap": 12,
+          "children": [
+            {
+              "id": "kpi-3-value",
+              "type": "text",
+              "height": 80,
+              "text": "{{VALUE_3}}",
+              "style": "$kpiValue",
+              "valign": "middle"
+            },
+            {
+              "id": "kpi-3-label",
+              "type": "text",
+              "flex": 1,
+              "text": "{{LABEL_3}}",
+              "style": "$kpiLabel"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

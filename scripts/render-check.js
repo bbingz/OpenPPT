@@ -1,11 +1,12 @@
 #!/usr/bin/env bun
 
 /**
- * Render-check: prove exported PPTX files open in a real Office engine.
+ * Render-check: conversion smoke via headless LibreOffice plus pdfinfo page count.
  *
- * Converts every *.pptx found under the given paths to PDF with headless
- * LibreOffice and asserts the conversion succeeds, the PDF is non-trivial,
- * and (when countable) the PDF page count matches the PPTX slide count.
+ * Converts every *.pptx found under the given paths to PDF and requires
+ * pdfinfo to report a positive page count that matches the PPTX slide count.
+ * Zero, unknown, or mismatched counts never PASS. This is not a full Office,
+ * glyph, or editorial validation.
  *
  * Usage:
  *   bun scripts/render-check.js [--require] [--limit N] <file-or-dir> [...]
@@ -14,7 +15,7 @@
  * is not installed (local convenience); CI passes --require.
  */
 
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import {
   existsSync,
   mkdtempSync,
@@ -29,6 +30,7 @@ import { pathToFileURL } from "node:url";
 import JSZip from "jszip";
 
 import { findSoffice } from "../src/render-pdf.js";
+import { libreOfficeChildEnv } from "../src/internal/libreoffice-env.js";
 
 function collectPptx(paths, limit) {
   const found = [];
@@ -50,10 +52,43 @@ async function slideCount(pptxPath) {
   return Object.keys(zip.files).filter((n) => /^ppt\/slides\/slide\d+\.xml$/.test(n)).length;
 }
 
-function pdfPageCount(pdfBytes) {
-  const text = pdfBytes.toString("latin1");
-  const matches = text.match(/\/Type\s*\/Page[^s]/g);
-  return matches ? matches.length : 0;
+/**
+ * Reliable page count from pdfinfo. Never guess via PDF regex.
+ * @param {string} pdfPath
+ * @returns {{ ok: true, pages: number } | { ok: false, detail: string }}
+ */
+function inspectPdfPages(pdfPath) {
+  let probe;
+  try {
+    probe = spawnSync(process.env.PDFINFO || "pdfinfo", [pdfPath], {
+      encoding: "utf8",
+      timeout: 15000,
+    });
+  } catch (err) {
+    return {
+      ok: false,
+      detail: `pdfinfo error: ${err instanceof Error ? err.message : String(err)}`,
+    };
+  }
+  if (probe.error?.code === "ENOENT") {
+    return {
+      ok: false,
+      detail: "pdfinfo not found — cannot verify page count (install poppler-utils)",
+    };
+  }
+  if (probe.status !== 0) {
+    const err = String(probe.stderr || probe.stdout || "pdfinfo failed").split("\n")[0];
+    return { ok: false, detail: `pdfinfo failed: ${err}` };
+  }
+  const match = String(probe.stdout || "").match(/^Pages:\s+(\d+)\s*$/m);
+  if (!match) {
+    return { ok: false, detail: "pdfinfo did not report a page count" };
+  }
+  const pages = Number(match[1]);
+  if (!Number.isInteger(pages) || pages <= 0) {
+    return { ok: false, detail: `pdfinfo page count is ${pages}` };
+  }
+  return { ok: true, pages };
 }
 
 async function main() {
@@ -104,7 +139,7 @@ async function main() {
           "--outdir", work,
           file,
         ],
-        { stdio: "pipe", timeout: 120000 },
+        { stdio: "pipe", timeout: 120000, env: libreOfficeChildEnv() },
       );
       const pdfPath = join(work, `${basename(file, ".pptx")}.pdf`);
       if (!existsSync(pdfPath)) {
@@ -114,9 +149,11 @@ async function main() {
         if (pdf.length < 1024) problem = `suspiciously small PDF (${pdf.length} B)`;
         else {
           const expected = await slideCount(file);
-          const got = pdfPageCount(pdf);
-          if (got > 0 && got !== expected) {
-            problem = `PDF pages ${got} != slides ${expected}`;
+          const inspected = inspectPdfPages(pdfPath);
+          if (!inspected.ok) {
+            problem = inspected.detail;
+          } else if (inspected.pages !== expected) {
+            problem = `pdfinfo pages ${inspected.pages} != PPTX slides ${expected}`;
           }
         }
         rmSync(pdfPath, { force: true });
@@ -134,7 +171,10 @@ async function main() {
   }
 
   rmSync(work, { recursive: true, force: true });
-  console.log(`\n${files.length - failures}/${files.length} files render in LibreOffice`);
+  console.log(
+    `\n${files.length - failures}/${files.length} files produced a PDF whose pdfinfo page count matched the PPTX slide count`,
+  );
+  console.log("Conversion smoke only — not full Office, glyph, or editorial validation.");
   if (failures > 0) process.exit(1);
 }
 

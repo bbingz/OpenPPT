@@ -13,32 +13,9 @@ import { fileURLToPath } from "node:url";
 import { OpenPptError, ErrorCodes } from "./errors.js";
 import { writeDeckFileAtomic } from "./project-write.js";
 import { validateDeck } from "./validate.js";
+import { loadThemeColors } from "./internal/theme-io.js";
 
 const rootDir = join(dirname(fileURLToPath(import.meta.url)), "..");
-const THEME_IDS = new Set(["default", "dark", "magazine", "report"]);
-
-/**
- * @param {string} themeId default|dark|magazine|report
- */
-function loadThemeColors(themeId) {
-  if (!THEME_IDS.has(themeId)) {
-    throw new OpenPptError(
-      ErrorCodes.IO,
-      `Unknown theme "${themeId}" (available: default, dark, magazine, report)`,
-      { themeId },
-    );
-  }
-  const path = join(rootDir, "themes", `${themeId}.json`);
-  if (!existsSync(path)) {
-    throw new OpenPptError(
-      ErrorCodes.IO,
-      `Unknown theme "${themeId}" (available: default, dark, magazine, report)`,
-      { themeId },
-    );
-  }
-  const doc = JSON.parse(readFileSync(path, "utf8"));
-  return doc.colors || {};
-}
 
 /**
  * Create a starter deck project.

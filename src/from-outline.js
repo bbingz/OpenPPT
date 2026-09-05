@@ -15,47 +15,61 @@ import {
   existsSync,
   readFileSync,
 } from "node:fs";
-import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join, resolve } from "node:path";
 import { OpenPptError, ErrorCodes } from "./errors.js";
 import { writeDeckFileAtomic } from "./project-write.js";
 import { validateDeck } from "./validate.js";
+import { loadThemeColors } from "./internal/theme-io.js";
+import { RESOURCE_LIMITS, assertResourceLimit } from "./resource-limits.js";
+import {
+  composeAgendaPages,
+  composeCoverPage,
+  outlineTextStyles,
+  sectionPages,
+} from "./internal/page-prototypes.js";
 
-const rootDir = join(dirname(fileURLToPath(import.meta.url)), "..");
-const THEME_IDS = new Set(["default", "dark", "magazine", "report"]);
+function finishSectionKind(section) {
+  if (!section) return;
+  const kinds = section._itemKinds;
+  const blocks = section._blocks;
+  delete section._itemKinds;
+  delete section._blocks;
+  if (Array.isArray(blocks) && blocks.length > 0) section.blocks = blocks;
+  if (!Array.isArray(kinds) || kinds.length === 0) return;
+  const first = kinds[0];
+  if (kinds.every((kind) => kind === first)) section.listKind = first;
+}
 
-/**
- * @param {string} themeId
- */
-function loadThemeColors(themeId) {
-  if (!THEME_IDS.has(themeId)) {
-    throw new OpenPptError(
-      ErrorCodes.IO,
-      `Unknown theme "${themeId}" (available: default, dark, magazine, report)`,
-      { themeId },
-    );
-  }
-  const path = join(rootDir, "themes", `${themeId}.json`);
-  if (!existsSync(path)) {
-    throw new OpenPptError(
-      ErrorCodes.IO,
-      `Unknown theme "${themeId}"`,
-      { themeId },
-    );
-  }
-  return JSON.parse(readFileSync(path, "utf8")).colors || {};
+function accountString(value, context, totals) {
+  if (typeof value !== "string") return;
+  const bytes = Buffer.byteLength(value, "utf8");
+  assertResourceLimit(
+    bytes,
+    RESOURCE_LIMITS.stringBytes,
+    "stringBytes",
+    context,
+  );
+  totals.bytes += bytes;
+  assertResourceLimit(
+    totals.bytes,
+    RESOURCE_LIMITS.totalStringBytes,
+    "totalStringBytes",
+    context,
+  );
 }
 
 /**
- * Parse outline markdown into { title, sections: [{ title, bullets: string[] }] }.
+ * Parse outline markdown into { title, sections: [{ title, bullets, listKind? }] }.
+ * bullets keep literal item text (markers stripped). listKind is set only when
+ * every item in the section shares one source kind: ordered | unordered | prose.
  * @param {string} md
  */
 export function parseOutlineMarkdown(md) {
   const lines = String(md).split(/\r?\n/);
   let title = "Untitled deck";
-  /** @type {{ title: string, bullets: string[] }[]} */
+  /** @type {{ title: string, bullets: string[], listKind?: string }[]} */
   const sections = [];
-  /** @type {{ title: string, bullets: string[] } | null} */
+  /** @type {{ title: string, bullets: string[], listKind?: string, _itemKinds?: string[] } | null} */
   let current = null;
 
   for (const raw of lines) {
@@ -68,27 +82,40 @@ export function parseOutlineMarkdown(md) {
       continue;
     }
     if (/^##\s+/.test(t)) {
-      current = { title: t.replace(/^##\s+/, "").trim() || "Section", bullets: [] };
+      finishSectionKind(current);
+      current = {
+        title: t.replace(/^##\s+/, "").trim() || "Section",
+        bullets: [],
+        _itemKinds: [],
+        _blocks: [],
+      };
       sections.push(current);
       continue;
     }
     if (!current) {
-      // create implicit first section from body
-      current = { title: "Overview", bullets: [] };
+      current = { title: "Overview", bullets: [], _itemKinds: [], _blocks: [] };
       sections.push(current);
     }
     if (/^[-*+]\s+/.test(t)) {
-      current.bullets.push(t.replace(/^[-*+]\s+/, "").trim());
+      const text = t.replace(/^[-*+]\s+/, "").trim();
+      current.bullets.push(text);
+      current._itemKinds.push("unordered");
+      current._blocks.push({ kind: "unordered", text });
     } else if (/^\d+\.\s+/.test(t)) {
-      current.bullets.push(t.replace(/^\d+\.\s+/, "").trim());
+      const match = t.match(/^(\d+)\.\s+(.*)$/);
+      const text = (match ? match[2] : t.replace(/^\d+\.\s+/, "")).trim();
+      const number = match ? match[1] : String(current.bullets.length + 1);
+      current.bullets.push(text);
+      current._itemKinds.push("ordered");
+      current._blocks.push({ kind: "ordered", text, number });
     } else {
       current.bullets.push(t);
+      current._itemKinds.push("prose");
+      current._blocks.push({ kind: "prose", text: t });
     }
   }
 
-  if (sections.length === 0) {
-    sections.push({ title: "Overview", bullets: ["Add ## headings and - bullets"] });
-  }
+  finishSectionKind(current);
   return { title, sections };
 }
 
@@ -114,135 +141,51 @@ export function outlineToDeck(outline, options = {}) {
     );
   }
   const size = [960, 540];
-
-  /** @type {object[]} */
-  const pages = [
-    {
-      id: "cover",
-      background: { type: "solid", color: "$background" },
-      elements: [
-        {
-          id: "cover-stack",
-          type: "group",
-          layout: "stack",
-          bounds: [60, 160, 840, 240],
-          gap: 20,
-          children: [
-            {
-              id: "cover-title",
-              type: "text",
-              height: 80,
-              text: outline.title,
-              fontSize: 34,
-              bold: true,
-              color: "$primary",
-            },
-            {
-              id: "cover-sub",
-              type: "text",
-              height: 40,
-              text: `${outline.sections.length} sections · generated by OpenPPT`,
-              fontSize: 16,
-              color: "$muted",
-            },
-          ],
-        },
-      ],
-    },
-  ];
-
-  // TOC when enough sections. Seven 36px entries plus six 16px gaps fit 380px.
-  if (outline.sections.length >= 2) {
-    const tocChunks = [];
-    for (let start = 0; start < outline.sections.length; start += 7) {
-      tocChunks.push(outline.sections.slice(start, start + 7));
-    }
-    for (let chunkIndex = 0; chunkIndex < tocChunks.length; chunkIndex += 1) {
-      const suffix = chunkIndex === 0 ? "" : `-${chunkIndex + 1}`;
-      pages.push({
-        id: `toc${suffix}`,
-        background: { type: "solid", color: "$surface" },
-        elements: [
-          {
-            id: `toc-h${suffix}`,
-            type: "text",
-            bounds: [48, 32, 864, 40],
-            text:
-              tocChunks.length === 1
-                ? "Agenda"
-                : `Agenda ${chunkIndex + 1}/${tocChunks.length}`,
-            fontSize: 26,
-            bold: true,
-            color: "$primary",
-          },
-          {
-            id: `toc-list${suffix}`,
-            type: "group",
-            layout: "stack",
-            bounds: [64, 100, 832, 380],
-            gap: 16,
-            children: tocChunks[chunkIndex].map((sec, localIndex) => {
-              const sectionIndex = chunkIndex * 7 + localIndex;
-              return {
-                id: `toc-${sectionIndex + 1}`,
-                type: "text",
-                height: 36,
-                text: `${String(sectionIndex + 1).padStart(2, "0")}  ${sec.title}`,
-                fontSize: 18,
-                color: "$text",
-              };
-            }),
-          },
-        ],
-      });
+  const sections = Array.isArray(outline.sections) ? outline.sections : [];
+  const stringTotals = { bytes: 0 };
+  accountString(outline.title, "title", stringTotals);
+  for (let index = 0; index < sections.length; index += 1) {
+    const section = sections[index] || {};
+    accountString(section.title, `sections[${index}].title`, stringTotals);
+    const bullets = Array.isArray(section.bullets) ? section.bullets : [];
+    for (let bulletIndex = 0; bulletIndex < bullets.length; bulletIndex += 1) {
+      accountString(
+        bullets[bulletIndex],
+        `sections[${index}].bullets[${bulletIndex}]`,
+        stringTotals,
+      );
     }
   }
+  const minPages = 1 + (sections.length >= 2 ? 1 : 0) + sections.length;
+  assertResourceLimit(
+    minPages,
+    RESOURCE_LIMITS.pagesPerDeck,
+    "pagesPerDeck",
+    "from-outline",
+  );
 
-  for (let i = 0; i < outline.sections.length; i += 1) {
-    const sec = outline.sections[i];
-    const body =
-      sec.bullets.length > 0
-        ? sec.bullets.map((b) => `• ${b}`).join("\n")
-        : " ";
-    pages.push({
-      id: `sec-${i + 1}`,
-      background: { type: "solid", color: "$background" },
-      elements: [
-        {
-          id: `sec-${i + 1}-panel`,
-          type: "group",
-          layout: "stack",
-          bounds: [48, 36, 864, 468],
-          gap: 20,
-          children: [
-            {
-              id: `sec-${i + 1}-h`,
-              type: "text",
-              height: 48,
-              text: sec.title,
-              fontSize: 26,
-              bold: true,
-              color: "$primary",
-            },
-            {
-              id: `sec-${i + 1}-b`,
-              type: "text",
-              flex: 1,
-              text: body,
-              fontSize: 16,
-              color: "$text",
-            },
-          ],
-        },
-      ],
-    });
+  /** @type {object[]} */
+  const pages = [];
+  const pushPage = (page) => {
+    pages.push(page);
+    assertResourceLimit(
+      pages.length,
+      RESOURCE_LIMITS.pagesPerDeck,
+      "pagesPerDeck",
+      `pages[${pages.length - 1}]`,
+    );
+  };
+  pushPage(composeCoverPage(outline.title));
+  for (const page of composeAgendaPages(sections)) pushPage(page);
+  for (let i = 0; i < sections.length; i += 1) {
+    for (const page of sectionPages(`sec-${i + 1}`, sections[i])) pushPage(page);
   }
 
   return {
     version: "openppt-1",
     title: outline.title,
     size,
-    theme: { colors },
+    theme: { colors, textStyles: outlineTextStyles() },
     pages,
   };
 }

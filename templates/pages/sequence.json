@@ -1,0 +1,97 @@
+{
+  "id": "sequence",
+  "background": { "type": "solid", "color": "$background" },
+  "elements": [
+    {
+      "id": "title",
+      "type": "text",
+      "bounds": [48, 36, 864, 56],
+      "text": "{{TITLE}}",
+      "style": "$title"
+    },
+    {
+      "id": "steps",
+      "type": "group",
+      "layout": "stack",
+      "bounds": [48, 108, 864, 396],
+      "gap": 16,
+      "children": [
+        {
+          "id": "step-1",
+          "type": "group",
+          "layout": "row",
+          "height": 120,
+          "gap": 20,
+          "children": [
+            {
+              "id": "step-1-n",
+              "type": "text",
+              "width": 56,
+              "text": "{{STEP_1_N}}",
+              "style": "$stepIndex",
+              "valign": "middle"
+            },
+            {
+              "id": "step-1-t",
+              "type": "text",
+              "flex": 1,
+              "text": "{{STEP_1_T}}",
+              "style": "$body",
+              "valign": "middle"
+            }
+          ]
+        },
+        {
+          "id": "step-2",
+          "type": "group",
+          "layout": "row",
+          "height": 120,
+          "gap": 20,
+          "children": [
+            {
+              "id": "step-2-n",
+              "type": "text",
+              "width": 56,
+              "text": "{{STEP_2_N}}",
+              "style": "$stepIndex",
+              "valign": "middle"
+            },
+            {
+              "id": "step-2-t",
+              "type": "text",
+              "flex": 1,
+              "text": "{{STEP_2_T}}",
+              "style": "$body",
+              "valign": "middle"
+            }
+          ]
+        },
+        {
+          "id": "step-3",
+          "type": "group",
+          "layout": "row",
+          "height": 120,
+          "gap": 20,
+          "children": [
+            {
+              "id": "step-3-n",
+              "type": "text",
+              "width": 56,
+              "text": "{{STEP_3_N}}",
+              "style": "$stepIndex",
+              "valign": "middle"
+            },
+            {
+              "id": "step-3-t",
+              "type": "text",
+              "flex": 1,
+              "text": "{{STEP_3_T}}",
+              "style": "$body",
+              "valign": "middle"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

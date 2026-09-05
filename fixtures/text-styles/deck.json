@@ -1,0 +1,85 @@
+{
+  "version": "openppt-1",
+  "title": "Executable text styles",
+  "size": [960, 540],
+  "theme": {
+    "colors": {
+      "text": "#111827",
+      "primary": "#2563EB",
+      "background": "#FFFFFF"
+    },
+    "fonts": {
+      "latin": "Arial",
+      "ea": "Noto Sans CJK SC"
+    },
+    "textStyles": {
+      "heading": {
+        "fontSize": 28,
+        "bold": true,
+        "italic": true,
+        "color": "$primary"
+      },
+      "body": {
+        "fontSize": 20,
+        "bold": true,
+        "italic": true,
+        "color": "$text",
+        "align": "left"
+      }
+    }
+  },
+  "pages": [
+    {
+      "id": "style-page",
+      "background": { "type": "solid", "color": "$background" },
+      "elements": [
+        {
+          "id": "heading",
+          "type": "text",
+          "bounds": [48, 24, 864, 64],
+          "style": "$heading",
+          "italic": false,
+          "text": "可执行样式 · Executable styles"
+        },
+        {
+          "id": "body",
+          "type": "text",
+          "bounds": [48, 96, 500, 160],
+          "style": "$body",
+          "bold": false,
+          "text": [
+            { "text": "中文正文保持可读。Latin body stays in Arial.\n" },
+            {
+              "text": "Run override / 独立东亚字体",
+              "fontFamily": "Times New Roman",
+              "bold": true,
+              "italic": false,
+              "fontSize": 24
+            }
+          ]
+        },
+        {
+          "id": "tbl",
+          "type": "table",
+          "bounds": [48, 280, 420, 200],
+          "header": true,
+          "rows": [
+            ["项 Item", "值 Value"],
+            ["拉丁 Latin", "中文 CJK"],
+            ["样式 style", "$body"]
+          ]
+        },
+        {
+          "id": "ch",
+          "type": "chart",
+          "bounds": [492, 280, 420, 220],
+          "chartType": "bar",
+          "title": "成本 Cost",
+          "series": [
+            { "name": "Q", "labels": ["A", "B"], "values": [3, 5] }
+          ]
+        }
+      ]
+    }
+  ]
+}

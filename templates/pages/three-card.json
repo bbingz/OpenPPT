@@ -1,0 +1,113 @@
+{
+  "id": "three-card",
+  "background": { "type": "solid", "color": "$background" },
+  "elements": [
+    {
+      "id": "title",
+      "type": "text",
+      "bounds": [48, 36, 864, 56],
+      "text": "{{TITLE}}",
+      "style": "$title"
+    },
+    {
+      "id": "grid",
+      "type": "group",
+      "layout": "grid",
+      "columns": 3,
+      "bounds": [48, 108, 864, 396],
+      "gap": 20,
+      "children": [
+        {
+          "id": "card-1",
+          "type": "group",
+          "layout": "layer",
+          "children": [
+            {
+              "id": "card-1-bg",
+              "type": "shape",
+              "shape": "roundRect",
+              "fill": "$surface",
+              "lineColor": "$primary",
+              "lineWidth": 1
+            },
+            {
+              "id": "card-1-pad",
+              "type": "group",
+              "layout": "stack",
+              "padding": 20,
+              "children": [
+                {
+                  "id": "card-1-body",
+                  "type": "text",
+                  "flex": 1,
+                  "text": "{{BODY_1}}",
+                  "style": "$body"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "card-2",
+          "type": "group",
+          "layout": "layer",
+          "children": [
+            {
+              "id": "card-2-bg",
+              "type": "shape",
+              "shape": "roundRect",
+              "fill": "$surface",
+              "lineColor": "$primary",
+              "lineWidth": 1
+            },
+            {
+              "id": "card-2-pad",
+              "type": "group",
+              "layout": "stack",
+              "padding": 20,
+              "children": [
+                {
+                  "id": "card-2-body",
+                  "type": "text",
+                  "flex": 1,
+                  "text": "{{BODY_2}}",
+                  "style": "$body"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "card-3",
+          "type": "group",
+          "layout": "layer",
+          "children": [
+            {
+              "id": "card-3-bg",
+              "type": "shape",
+              "shape": "roundRect",
+              "fill": "$surface",
+              "lineColor": "$primary",
+              "lineWidth": 1
+            },
+            {
+              "id": "card-3-pad",
+              "type": "group",
+              "layout": "stack",
+              "padding": 20,
+              "children": [
+                {
+                  "id": "card-3-body",
+                  "type": "text",
+                  "flex": 1,
+                  "text": "{{BODY_3}}",
+                  "style": "$body"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

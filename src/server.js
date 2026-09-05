@@ -7,6 +7,7 @@
  */
 
 import {
+  cpSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -19,14 +20,15 @@ import {
 } from "node:fs";
 import { tmpdir, homedir } from "node:os";
 import { basename, dirname, extname, join, relative, resolve, isAbsolute, sep } from "node:path";
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { fileURLToPath } from "node:url";
 
 import { OpenPptError, ErrorCodes } from "./errors.js";
 import { loadDeck } from "./load.js";
 import { validateDeck, sniffImageBytes } from "./validate.js";
 import { compileToBuffer } from "./compile.js";
-import { findSoffice, convertPptxToPdf } from "./render-pdf.js";
+import { findSofficeAsync, convertPptxToPdfAsync } from "./render-pdf.js";
+import { MEDIA_EXTENSIONS, extToSniff, contentTypeFor } from "./internal/media-types.js";
 import { renderPreviewHtml } from "./preview.js";
 import { qaDeck } from "./qa.js";
 import { initProject } from "./init.js";
@@ -34,28 +36,26 @@ import { projectFromOutline } from "./from-outline.js";
 import { importPptx } from "./import-pptx.js";
 import { writeDeckFileAtomic } from "./project-write.js";
 import { RESOURCE_LIMITS } from "./resource-limits.js";
+import {
+  AuthoringPatchError,
+  applyAuthoringPatch,
+  cloneJson,
+  deckHasExternalPageRefs,
+  parsePatchBody,
+  serializeAuthoringDeck,
+} from "./internal/authoring-patch.js";
+import {
+  ProjectEventError,
+  SSE_LIMITS,
+  createProjectEventHub,
+  formatSseEvent,
+} from "./internal/project-events.js";
 
 const rootDir = join(dirname(fileURLToPath(import.meta.url)), "..");
 const pkg = JSON.parse(readFileSync(join(rootDir, "package.json"), "utf8"));
 
 const PROJECT_ID_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const MEDIA_NAME_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
-const MEDIA_EXT_TO_SNIFF = new Map([
-  [".png", "png"],
-  [".jpg", "jpg"],
-  [".jpeg", "jpg"],
-  [".gif", "gif"],
-  [".webp", "webp"],
-  [".svg", "svg"],
-]);
-const MEDIA_CONTENT_TYPES = new Map([
-  [".png", "image/png"],
-  [".jpg", "image/jpeg"],
-  [".jpeg", "image/jpeg"],
-  [".gif", "image/gif"],
-  [".webp", "image/webp"],
-  [".svg", "image/svg+xml"],
-]);
 const THEMES = ["default", "dark", "magazine", "report"];
 const DECK_FILES = ["deck.json", "deck.yaml", "deck.yml"];
 const DECK_SOURCE_MAX_BYTES = RESOURCE_LIMITS.totalStringBytes; // 8 MiB
@@ -64,6 +64,16 @@ const STATIC_FILES = new Map([
   ["/", { file: "index.html", type: "text/html; charset=utf-8" }],
   ["/index.html", { file: "index.html", type: "text/html; charset=utf-8" }],
   ["/app.js", { file: "app.js", type: "text/javascript; charset=utf-8" }],
+  ["/authoring-source.js", {
+    file: "authoring-source.js",
+    type: "text/javascript; charset=utf-8",
+    root: join(rootDir, "src/internal"),
+  }],
+  ["/workbench-lifecycle.js", {
+    file: "workbench-lifecycle.js",
+    type: "text/javascript; charset=utf-8",
+    root: join(rootDir, "src/internal"),
+  }],
   ["/styles.css", { file: "styles.css", type: "text/css; charset=utf-8" }],
   ["/favicon.svg", { file: "favicon.svg", type: "image/svg+xml" }],
 ]);
@@ -76,9 +86,95 @@ const APP_CSP = [
   "connect-src 'self'",
   "base-uri 'none'",
   "form-action 'self'",
+  "frame-ancestors 'none'",
 ].join("; ");
 const PREVIEW_CSP =
-  "default-src 'none'; img-src data:; style-src 'unsafe-inline'";
+  "default-src 'none'; img-src data:; style-src 'unsafe-inline'; frame-ancestors 'self'";
+const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+
+/** Exact Host authority for the bound loopback listener (host:port, IPv6 bracketed). */
+function hostAuthority(hostname, port) {
+  const host = hostname.includes(":") ? `[${hostname}]` : hostname;
+  return `${host}:${port}`;
+}
+
+function assertAllowedHost(req, hostname, port, publicOrigin) {
+  const expected = publicOrigin ? new URL(publicOrigin).host : hostAuthority(hostname, port).toLowerCase();
+  const actual = (req.headers.get("host") || "").trim().toLowerCase();
+  if (actual !== expected) {
+    throw new HttpError(
+      403,
+      "FORBIDDEN_HOST",
+      "Host header must match the Studio endpoint",
+    );
+  }
+}
+
+function assertAllowedOrigin(req, hostname, port, publicOrigin) {
+  if (!MUTATING_METHODS.has(req.method.toUpperCase())) return;
+  const origin = req.headers.get("origin");
+  if (origin == null || origin === "") return; // originless local CLI
+  if (origin === "null") {
+    throw new HttpError(403, "FORBIDDEN_ORIGIN", "null Origin is not allowed on mutations");
+  }
+  const allowed = publicOrigin || `http://${hostAuthority(hostname, port)}`;
+  if (origin !== allowed) {
+    throw new HttpError(
+      403,
+      "FORBIDDEN_ORIGIN",
+      "Origin must match the Studio endpoint",
+    );
+  }
+}
+
+/** SSE is GET; still reject foreign/null Origin and cross-site fetch metadata. */
+function assertAllowedSseAudience(req, hostname, port, publicOrigin) {
+  const site = (req.headers.get("sec-fetch-site") || "").trim().toLowerCase();
+  if (site === "cross-site") {
+    throw new HttpError(
+      403,
+      "FORBIDDEN_FETCH_SITE",
+      "cross-site EventSource is not allowed",
+    );
+  }
+  const origin = req.headers.get("origin");
+  if (origin == null || origin === "") return;
+  if (origin === "null") {
+    throw new HttpError(403, "FORBIDDEN_ORIGIN", "null Origin is not allowed on SSE");
+  }
+  const allowed = publicOrigin || `http://${hostAuthority(hostname, port)}`;
+  if (origin !== allowed) {
+    throw new HttpError(
+      403,
+      "FORBIDDEN_ORIGIN",
+      "Origin must match the Studio endpoint",
+    );
+  }
+}
+
+/** Strong validator for exact source bytes: quoted SHA-256 hex, never weak. */
+function strongEtag(bytes) {
+  return `"${createHash("sha256").update(bytes).digest("hex")}"`;
+}
+
+function parseIfMatch(header) {
+  if (header == null || !String(header).trim()) {
+    throw new HttpError(
+      428,
+      "PRECONDITION_REQUIRED",
+      "If-Match with a strong validator is required to save",
+    );
+  }
+  const value = String(header).trim();
+  if (value === "*" || /^W\//i.test(value)) {
+    throw new HttpError(
+      412,
+      "PRECONDITION_FAILED",
+      "If-Match must be a strong validator matching the current source",
+    );
+  }
+  return value;
+}
 
 class HttpError extends Error {
   constructor(status, code, message, details = {}) {
@@ -104,6 +200,12 @@ const ERROR_STATUS = new Map([
 
 function toHttpError(err) {
   if (err instanceof HttpError) return err;
+  if (err instanceof AuthoringPatchError) {
+    return new HttpError(err.status, err.code, err.message, err.details || {});
+  }
+  if (err instanceof ProjectEventError) {
+    return new HttpError(err.status, err.code, err.message, err.details || {});
+  }
   if (err instanceof OpenPptError) {
     return new HttpError(
       ERROR_STATUS.get(err.code) || 500,
@@ -175,11 +277,11 @@ function requireMediaName(name) {
     throw new HttpError(400, "BAD_MEDIA_NAME", `Invalid media name: ${name}`);
   }
   const ext = extname(name).toLowerCase();
-  if (!MEDIA_EXT_TO_SNIFF.has(ext)) {
+  if (!MEDIA_EXTENSIONS.has(ext)) {
     throw new HttpError(
       422,
       ErrorCodes.MEDIA_TYPE,
-      `Unsupported media extension: ${name} (allowed: ${[...MEDIA_EXT_TO_SNIFF.keys()].join(", ")})`,
+      `Unsupported media extension: ${name} (allowed: ${[...MEDIA_EXTENSIONS].join(", ")})`,
     );
   }
   return { name: basename(name), ext };
@@ -292,18 +394,29 @@ function uniqueMediaPath(mediaDir, name, ext) {
 
 /**
  * Start the local OpenPPT Studio server.
- * @param {{ port?: number, hostname?: string, dataDir?: string }} [options]
+ * @param {{ port?: number, hostname?: string, publicOrigin?: string, dataDir?: string, soffice?: string | null }} [options]
  * @returns {{ server: object, url: string, port: number, hostname: string, dataDir: string, stop: () => void }}
  */
 export function startWebServer(options = {}) {
+  const publicOrigin = options.publicOrigin;
+  if (publicOrigin !== undefined) {
+    const parsed = new URL(publicOrigin);
+    if (!["http:", "https:"].includes(parsed.protocol) || parsed.origin !== publicOrigin) {
+      throw new Error("publicOrigin must be an exact HTTP(S) origin without credentials, path, query or fragment");
+    }
+  }
   const hostname = options.hostname || "127.0.0.1";
   const port = options.port ?? 7357;
   const dataDir = resolve(options.dataDir || join(homedir(), ".openppt", "projects"));
   mkdirSync(dataDir, { recursive: true });
   const webDir = join(rootDir, "web");
-  const sofficePath = findSoffice();
+  // Do not call sync findSoffice() here: PATH --version uses spawnSync and
+  // would block start/health. Discovery is async on meta/export.pdf.
+  const sofficeOverride = options.soffice;
+  let pdfBusy = false;
+  const eventHub = createProjectEventHub({ dataDir });
 
-  async function handleApi(req, url) {
+  async function handleApi(req, url, httpServer) {
     const parts = url.pathname.split("/").filter(Boolean); // ["api", ...]
     const method = req.method.toUpperCase();
 
@@ -316,7 +429,9 @@ export function startWebServer(options = {}) {
         version: pkg.version,
         themes: THEMES,
         dataDir,
-        pdfAvailable: Boolean(sofficePath),
+        pdfAvailable: Boolean(
+          sofficeOverride !== undefined ? sofficeOverride : await findSofficeAsync(),
+        ),
         limits: {
           mediaBytesPerFile: RESOURCE_LIMITS.mediaBytesPerFile,
           mediaBytesPerDeck: RESOURCE_LIMITS.mediaBytesPerDeck,
@@ -416,24 +531,29 @@ export function startWebServer(options = {}) {
         if (method === "GET") {
           const deckFile = findDeckFile(dir);
           if (!deckFile) throw new HttpError(404, "NOT_FOUND", `Project not found: ${id}`);
-          const source = readFileSync(join(dir, deckFile), "utf8");
+          const sourceBytes = readFileSync(join(dir, deckFile));
+          const source = sourceBytes.toString("utf8");
           const mediaDir = join(dir, "media");
           const media = [];
           if (existsSync(mediaDir)) {
             for (const entry of readdirSync(mediaDir, { withFileTypes: true })) {
               if (!entry.isFile() || entry.name.startsWith(".")) continue;
-              if (!MEDIA_EXT_TO_SNIFF.has(extname(entry.name).toLowerCase())) continue;
+              if (!MEDIA_EXTENSIONS.has(extname(entry.name).toLowerCase())) continue;
               media.push({
                 name: entry.name,
                 size: statSync(join(mediaDir, entry.name)).size,
               });
             }
           }
-          return jsonResponse({
-            ...projectSummary(dataDir, id),
-            source,
-            media,
-          });
+          return jsonResponse(
+            {
+              ...projectSummary(dataDir, id),
+              source,
+              media,
+            },
+            200,
+            { ETag: strongEtag(Buffer.from(source, "utf8")) },
+          );
         }
         if (method === "DELETE") {
           if (!findDeckFile(dir)) {
@@ -446,6 +566,157 @@ export function startWebServer(options = {}) {
 
       const sub = parts[3];
 
+      // GET /api/projects/:id/events — project-scoped filesystem SSE
+      if (parts.length === 4 && sub === "events" && method === "GET") {
+        assertAllowedSseAudience(req, hostname, server.port, publicOrigin);
+        if (!existsSync(dir)) {
+          throw new HttpError(404, "NOT_FOUND", `Project not found: ${id}`);
+        }
+        httpServer.timeout(req, 0);
+        const encoder = new TextEncoder();
+        const early = [];
+        let sink = (name, data) => {
+          early.push([name, data]);
+        };
+        const unsub = eventHub.subscribe(id, dir, (name, data) => sink(name, data));
+        const maxFrames = SSE_LIMITS.maxBufferedEvents;
+        const maxBytes = SSE_LIMITS.maxBufferedBytes;
+        /** @type {Uint8Array[]} */
+        const pending = [];
+        let pendingBytes = 0;
+        let closed = false;
+        let heartbeat = null;
+        /** @type {((this: AbortSignal, ev: Event) => void) | null} */
+        let abortHandler = null;
+        /** @type {ReadableStreamDefaultController | null} */
+        let ctrl = null;
+        let cleanup = () => {};
+
+        const drain = (force = false) => {
+          if (!ctrl || closed) return;
+          while (pending.length) {
+            if (!force && (ctrl.desiredSize === null || ctrl.desiredSize <= 0)) break;
+            const frame = pending.shift();
+            pendingBytes -= frame.byteLength;
+            try {
+              ctrl.enqueue(frame);
+            } catch {
+              cleanup();
+              return;
+            }
+          }
+        };
+
+        const pushFrame = (bytes) => {
+          if (closed) return false;
+          if (pending.length >= maxFrames || pendingBytes + bytes.byteLength > maxBytes) {
+            return false;
+          }
+          pending.push(bytes);
+          pendingBytes += bytes.byteLength;
+          drain(false);
+          return true;
+        };
+
+        cleanup = () => {
+          if (closed) return;
+          closed = true;
+          if (heartbeat) {
+            clearInterval(heartbeat);
+            heartbeat = null;
+          }
+          if (abortHandler) {
+            req.signal.removeEventListener("abort", abortHandler);
+            abortHandler = null;
+          }
+          pending.length = 0;
+          pendingBytes = 0;
+          early.length = 0;
+          unsub();
+          try {
+            ctrl?.close();
+          } catch {
+            // already closed
+          }
+        };
+
+        const stream = new ReadableStream({
+          start(controller) {
+            ctrl = controller;
+            sink = (name, data) => {
+              if (closed) return;
+              const frame = encoder.encode(formatSseEvent(name, data));
+              if (!pushFrame(frame)) {
+                cleanup();
+                return;
+              }
+              if (name === "deleted" || name === "error") {
+                drain(true);
+                cleanup();
+              }
+            };
+            for (const item of early) sink(item[0], item[1]);
+            early.length = 0;
+            if (closed) return;
+            abortHandler = () => cleanup();
+            req.signal.addEventListener("abort", abortHandler);
+            heartbeat = setInterval(() => {
+              if (closed) return;
+              const beat = encoder.encode(": \n\n");
+              if (!pushFrame(beat)) cleanup();
+            }, SSE_LIMITS.heartbeatMs);
+            drain(false);
+          },
+          pull() {
+            drain(false);
+          },
+          cancel() {
+            cleanup();
+          },
+        });
+        return new Response(stream, {
+          headers: {
+            "Content-Type": "text/event-stream; charset=utf-8",
+            "Cache-Control": "no-cache, no-store",
+            Connection: "keep-alive",
+            "X-Accel-Buffering": "no",
+            "X-Content-Type-Options": "nosniff",
+          },
+        });
+      }
+
+      // POST /api/projects/:id/duplicate — fork the whole project folder
+      if (parts.length === 4 && sub === "duplicate" && method === "POST") {
+        if (!findDeckFile(dir)) {
+          throw new HttpError(404, "NOT_FOUND", `Project not found: ${id}`);
+        }
+        const raw = (await readBodyWithCap(req, 64 * 1024, "duplicate request")).toString("utf8");
+        let body = {};
+        try {
+          body = raw ? JSON.parse(raw) : {};
+        } catch {
+          throw new HttpError(400, "BAD_REQUEST", "Request body must be JSON");
+        }
+        const summary = projectSummary(dataDir, id);
+        const title =
+          (typeof body.title === "string" && body.title.trim()) ||
+          `${summary?.title || id} copy`;
+        const newId = requireProjectId(slugFromTitle(title));
+        const newDir = join(dataDir, newId);
+        assertInside(dataDir, newDir, "project");
+        cpSync(dir, newDir, { recursive: true, errorOnExist: true, force: false });
+        if (findDeckFile(newDir) === "deck.json") {
+          try {
+            const deck = JSON.parse(readFileSync(join(newDir, "deck.json"), "utf8"));
+            deck.title = title;
+            writeDeckFileAtomic(join(newDir, "deck.json"), `${JSON.stringify(deck, null, 2)}\n`, { force: true });
+          } catch {
+            // keep the copied deck as-is when it is not editable JSON
+          }
+        }
+        return jsonResponse({ project: projectSummary(dataDir, newId) }, 201);
+      }
+
       // PUT /api/projects/:id/deck — save deck source (must parse as JSON)
       if (parts.length === 4 && sub === "deck" && method === "PUT") {
         const deckFile = findDeckFile(dir);
@@ -453,6 +724,7 @@ export function startWebServer(options = {}) {
         if (deckFile !== "deck.json") {
           throw new HttpError(400, "BAD_REQUEST", "Web editing supports deck.json projects only");
         }
+        const claimed = parseIfMatch(req.headers.get("if-match"));
         const buf = await readBodyWithCap(req, DECK_SOURCE_MAX_BYTES, "deck source");
         const source = buf.toString("utf8");
         let parsed;
@@ -465,8 +737,111 @@ export function startWebServer(options = {}) {
           throw new HttpError(422, ErrorCodes.SCHEMA, "deck.json must be a JSON object");
         }
         const normalized = source.endsWith("\n") ? source : `${source}\n`;
-        writeDeckFileAtomic(join(dir, "deck.json"), normalized, { force: true });
-        return jsonResponse({ ok: true, savedAt: new Date().toISOString() });
+        const deckPath = join(dir, "deck.json");
+        // Re-read current bytes after awaits, then write synchronously so two
+        // cooperating PUTs from one version cannot both succeed. An external
+        // CLI writer that replaces deck.json between this read and the atomic
+        // rename remains a TOCTOU race outside the If-Match protocol.
+        const currentBytes = readFileSync(deckPath);
+        const currentTag = strongEtag(currentBytes);
+        if (claimed !== currentTag) {
+          throw new HttpError(
+            412,
+            "PRECONDITION_FAILED",
+            "If-Match does not match the current source",
+          );
+        }
+        writeDeckFileAtomic(deckPath, normalized, { force: true });
+        const savedTag = strongEtag(Buffer.from(normalized, "utf8"));
+        return jsonResponse(
+          { ok: true, savedAt: new Date().toISOString() },
+          200,
+          { ETag: savedTag },
+        );
+      }
+
+      // PATCH /api/projects/:id/deck — bounded authoring mutations
+      if (parts.length === 4 && sub === "deck" && method === "PATCH") {
+        const deckFile = findDeckFile(dir);
+        if (!deckFile) throw new HttpError(404, "NOT_FOUND", `Project not found: ${id}`);
+        if (deckFile !== "deck.json") {
+          throw new HttpError(
+            422,
+            "UNSUPPORTED_EDIT",
+            "PATCH cannot edit YAML decks; inline deck.json pages only. Use the CLI or convert to a single JSON file.",
+            { deckFile },
+          );
+        }
+        const contentType = (req.headers.get("content-type") || "").trim();
+        const mediaType = contentType.split(";")[0].trim().toLowerCase();
+        if (/\byaml\b|\byml\b/.test(contentType.toLowerCase())) {
+          throw new HttpError(
+            422,
+            "UNSUPPORTED_EDIT",
+            "PATCH accepts application/json only; YAML request bodies are not edited through this API.",
+          );
+        }
+        if (mediaType !== "application/json") {
+          throw new HttpError(
+            415,
+            "UNSUPPORTED_MEDIA_TYPE",
+            "PATCH requires Content-Type application/json",
+          );
+        }
+        const claimed = parseIfMatch(req.headers.get("if-match"));
+        const buf = await readBodyWithCap(req, DECK_SOURCE_MAX_BYTES, "deck source");
+        let requestBody;
+        try {
+          requestBody = JSON.parse(buf.toString("utf8"));
+        } catch (err) {
+          throw new HttpError(400, "BAD_REQUEST", `Request body must be JSON: ${err.message}`);
+        }
+        const operations = parsePatchBody(requestBody);
+        const deckPath = join(dir, "deck.json");
+        // Re-read after awaits so two cooperating PATCHes from one version
+        // cannot both succeed. External CLI replacement between this read and
+        // the atomic rename remains a TOCTOU race outside If-Match.
+        const currentBytes = readFileSync(deckPath);
+        const currentTag = strongEtag(currentBytes);
+        if (claimed !== currentTag) {
+          throw new HttpError(
+            412,
+            "PRECONDITION_FAILED",
+            "If-Match does not match the current source",
+          );
+        }
+        let authoring;
+        try {
+          authoring = JSON.parse(currentBytes.toString("utf8"));
+        } catch (err) {
+          throw new HttpError(422, ErrorCodes.SCHEMA, `deck.json is not valid JSON: ${err.message}`);
+        }
+        if (!authoring || typeof authoring !== "object" || Array.isArray(authoring)) {
+          throw new HttpError(422, ErrorCodes.SCHEMA, "deck.json must be a JSON object");
+        }
+        if (deckHasExternalPageRefs(authoring)) {
+          const pageIndex = authoring.pages.findIndex((page) => typeof page === "string");
+          throw new HttpError(
+            422,
+            "UNSUPPORTED_EDIT",
+            `PATCH cannot edit decks with external page files (pages[${pageIndex}]=${authoring.pages[pageIndex]}). Inline page objects in deck.json; multifile viewing and CLI still work.`,
+            { pageIndex, pagePath: authoring.pages[pageIndex] },
+          );
+        }
+        const next = applyAuthoringPatch(authoring, operations);
+        validateDeck(cloneJson(next), { projectRoot: dir, checkMedia: true });
+        const savedSource = serializeAuthoringDeck(next);
+        const latestBytes = readFileSync(deckPath);
+        if (claimed !== strongEtag(latestBytes)) {
+          throw new HttpError(
+            412,
+            "PRECONDITION_FAILED",
+            "If-Match does not match the current source",
+          );
+        }
+        writeDeckFileAtomic(deckPath, savedSource, { force: true });
+        const savedTag = strongEtag(Buffer.from(savedSource, "utf8"));
+        return jsonResponse({ ok: true, source: savedSource }, 200, { ETag: savedTag });
       }
 
       // POST /api/projects/:id/validate
@@ -532,33 +907,50 @@ export function startWebServer(options = {}) {
 
       // GET /api/projects/:id/export.pdf — optional LibreOffice rendering
       if (parts.length === 4 && sub === "export.pdf" && method === "GET") {
-        if (!sofficePath) {
+        if (pdfBusy) {
           throw new HttpError(
-            501,
-            "PDF_UNAVAILABLE",
-            "LibreOffice (soffice) not found on this machine — install it or set SOFFICE to enable PDF export",
+            429,
+            "PDF_BUSY",
+            "A PDF conversion is already in progress on this server",
           );
         }
-        const { deck, projectRoot } = loadProjectDeck(dataDir, id);
-        const buffer = await compileToBuffer(deck, { projectRoot });
-        const work = mkdtempSync(join(tmpdir(), "openppt-studio-pdf-"));
+        pdfBusy = true;
         try {
-          const pptxPath = join(work, "deck.pptx");
-          writeFileSync(pptxPath, buffer);
-          const pdfPath = convertPptxToPdf(pptxPath, join(work, "deck.pdf"), {
-            force: true,
-            soffice: sofficePath,
-          });
-          return new Response(readFileSync(pdfPath), {
-            headers: {
-              "Content-Type": "application/pdf",
-              "Content-Disposition": `attachment; filename="${id}.pdf"`,
-              "Cache-Control": "no-store",
-              "X-Content-Type-Options": "nosniff",
-            },
-          });
+          // Bun.serve default idleTimeout is 10s and counts silent in-flight
+          // handlers; PDF conversion may run up to CONVERT_TIMEOUT_MS (120s).
+          httpServer.timeout(req, 180);
+          const work = mkdtempSync(join(tmpdir(), "openppt-studio-pdf-"));
+          try {
+            const sofficePath =
+              sofficeOverride !== undefined ? sofficeOverride : await findSofficeAsync();
+            if (!sofficePath) {
+              throw new HttpError(
+                501,
+                "PDF_UNAVAILABLE",
+                "LibreOffice (soffice) not found on this machine — install it or set SOFFICE to enable PDF export",
+              );
+            }
+            const { deck, projectRoot } = loadProjectDeck(dataDir, id);
+            const buffer = await compileToBuffer(deck, { projectRoot });
+            const pptxPath = join(work, "deck.pptx");
+            writeFileSync(pptxPath, buffer);
+            const pdfPath = await convertPptxToPdfAsync(pptxPath, join(work, "deck.pdf"), {
+              force: true,
+              soffice: sofficePath,
+            });
+            return new Response(readFileSync(pdfPath), {
+              headers: {
+                "Content-Type": "application/pdf",
+                "Content-Disposition": `attachment; filename="${id}.pdf"`,
+                "Cache-Control": "no-store",
+                "X-Content-Type-Options": "nosniff",
+              },
+            });
+          } finally {
+            rmSync(work, { recursive: true, force: true });
+          }
         } finally {
-          rmSync(work, { recursive: true, force: true });
+          pdfBusy = false;
         }
       }
 
@@ -576,7 +968,7 @@ export function startWebServer(options = {}) {
           );
           const { name, ext } = requireMediaName(basename(fileName || ""));
           const sniffed = sniffImageBytes(bytes);
-          if (!sniffed || sniffed !== MEDIA_EXT_TO_SNIFF.get(ext)) {
+          if (!sniffed || sniffed !== extToSniff(ext)) {
             throw new HttpError(
               422,
               ErrorCodes.MEDIA_TYPE,
@@ -601,7 +993,7 @@ export function startWebServer(options = {}) {
             const ext = extname(name).toLowerCase();
             return new Response(readFileSync(filePath), {
               headers: {
-                "Content-Type": MEDIA_CONTENT_TYPES.get(ext) || "application/octet-stream",
+                "Content-Type": contentTypeFor(ext) || "application/octet-stream",
                 "Cache-Control": "no-store",
                 "X-Content-Type-Options": "nosniff",
                 "Content-Security-Policy": "default-src 'none'",
@@ -623,8 +1015,9 @@ export function startWebServer(options = {}) {
   function handleStatic(url) {
     const entry = STATIC_FILES.get(url.pathname);
     if (!entry) return null;
-    const filePath = join(webDir, entry.file);
-    assertInside(webDir, filePath, "static");
+    const base = entry.root || webDir;
+    const filePath = join(base, entry.file);
+    assertInside(base, filePath, "static");
     if (!existsSync(filePath)) return null;
     const headers = {
       "Content-Type": entry.type,
@@ -640,11 +1033,13 @@ export function startWebServer(options = {}) {
   const server = Bun.serve({
     hostname,
     port,
-    async fetch(req) {
+    async fetch(req, httpServer) {
       const url = new URL(req.url);
       try {
+        assertAllowedHost(req, hostname, server.port, publicOrigin);
+        assertAllowedOrigin(req, hostname, server.port, publicOrigin);
         if (url.pathname === "/api" || url.pathname.startsWith("/api/")) {
-          return await handleApi(req, url);
+          return await handleApi(req, url, httpServer);
         }
         const staticResponse = handleStatic(url);
         if (staticResponse) return staticResponse;
@@ -661,7 +1056,10 @@ export function startWebServer(options = {}) {
     hostname,
     port: boundPort,
     dataDir,
-    url: `http://${hostname}:${boundPort}/`,
-    stop: () => server.stop(true),
+    url: publicOrigin ? `${publicOrigin}/` : `http://${hostname}:${boundPort}/`,
+    stop: () => {
+      eventHub.close();
+      server.stop(true);
+    },
   };
 }
